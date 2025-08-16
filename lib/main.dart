@@ -671,6 +671,7 @@ class SupabaseService with ChangeNotifier {
       }
 
       logger.d('Task $taskId updated successfully.');
+      notifyListeners();
     } catch (e, st) {
       logger.e('Error updating task: $taskId', error: e, stackTrace: st);
       throw Exception('Failed to update task.');
@@ -1639,10 +1640,7 @@ class ProjectListScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final supabaseService = Provider.of<SupabaseService>(
-      context,
-      listen: false,
-    );
+    final supabaseService = Provider.of<SupabaseService>(context);
     return Scaffold(
       body: StreamBuilder<List<ProjectModel>>(
         stream: supabaseService.getProjects(),
@@ -3487,10 +3485,7 @@ class UploadListScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final supabaseService = Provider.of<SupabaseService>(
-      context,
-      listen: false,
-    );
+    final supabaseService = Provider.of<SupabaseService>(context);
 
     return Scaffold(
       body: StreamBuilder<List<UploadModel>>(

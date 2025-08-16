@@ -614,7 +614,6 @@ class SupabaseService with ChangeNotifier {
     }
   }
 
-  // ======== NEW/MODIFIED & CORRECTED SECTION: updateTask method ========
   Future<void> updateTask(
     String taskId,
     Map<String, dynamic> updatedFields,
@@ -628,7 +627,6 @@ class SupabaseService with ChangeNotifier {
       String? oldStatus;
       String? newStatus = updatedFields['status'];
 
-      // if status is being changed, fetch old status and set timestamps
       if (newStatus != null) {
         final currentTaskResponse = await _supabase
             .from('tasks')
@@ -640,27 +638,22 @@ class SupabaseService with ChangeNotifier {
         final currentStartedAt = currentTaskResponse['started_at'];
 
         if (oldStatus != newStatus) {
-          // If task is started for the first time, set started_at
           if (oldStatus == 'Not Started' &&
               newStatus != 'Not Started' &&
               currentStartedAt == null) {
             updatePayload['started_at'] = DateTime.now().toIso8601String();
           }
 
-          // If task is completed, set completed_at
           if (newStatus == 'Completed') {
             updatePayload['completed_at'] = DateTime.now().toIso8601String();
           } else {
-            // If task is reopened, nullify completed_at
             updatePayload['completed_at'] = null;
           }
         }
       }
 
-      // Update the task table
       await _supabase.from('tasks').update(updatePayload).eq('id', taskId);
 
-      // If status changed, insert a record into the history table
       if (newStatus != null && oldStatus != newStatus) {
         await _supabase.from('task_status_history').insert({
           'task_id': taskId,
@@ -773,7 +766,6 @@ class SupabaseService with ChangeNotifier {
         );
   }
 
-  // ======== NEW/MODIFIED SECTION: New RPC methods for reporting ========
   Future<Map<String, dynamic>> getReportOverview(
     DateTimeRange dateRange,
   ) async {
@@ -787,7 +779,6 @@ class SupabaseService with ChangeNotifier {
         'get_report_overview',
         params: params,
       );
-      // Explicitly cast the data to the correct type
       final Map<String, dynamic> overview = {
         'kpis': <String, dynamic>{},
         'pie_chart_data': <String, dynamic>{},
@@ -795,7 +786,6 @@ class SupabaseService with ChangeNotifier {
 
       final List<dynamic> data = response;
       for (var item in data) {
-        // Convert each 'item' to a Map<String, dynamic> here
         final Map<String, dynamic> metricMap = Map<String, dynamic>.from(item);
         final String metric = metricMap['metric'] as String;
         final num value = metricMap['value'] as num;
@@ -1198,10 +1188,11 @@ class _AuthScreenState extends State<AuthScreen> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 400),
             child: Card(
+              elevation: 4,
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 32.0,
-                  vertical: 40.0,
+                  horizontal: 24.0,
+                  vertical: 32.0,
                 ),
                 child: Form(
                   key: _formKey,
@@ -1214,7 +1205,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         size: 60,
                         color: theme.colorScheme.primary,
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
                       Text(
                         _isLogin ? 'Welcome Back!' : 'Create Admin Account',
                         style: theme.textTheme.headlineMedium,
@@ -1309,6 +1300,30 @@ class _AuthScreenState extends State<AuthScreen> {
 }
 
 // ======== WIDGETS (REUSABLE COMPONENTS) ========
+class ResponsiveLayout extends StatelessWidget {
+  final Widget mobileBody;
+  final Widget desktopBody;
+
+  const ResponsiveLayout({
+    Key? key,
+    required this.mobileBody,
+    required this.desktopBody,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 800) {
+          return mobileBody;
+        } else {
+          return desktopBody;
+        }
+      },
+    );
+  }
+}
+
 class InfoCard extends StatelessWidget {
   final String title;
   final String value;
@@ -1329,15 +1344,15 @@ class InfoCard extends StatelessWidget {
     return Card(
       elevation: 1,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.all(20.0),
         child: Row(
           children: [
             CircleAvatar(
-              radius: 28,
+              radius: 24,
               backgroundColor: color.withOpacity(0.15),
-              child: Icon(icon, size: 32, color: color),
+              child: Icon(icon, size: 28, color: color),
             ),
-            const SizedBox(width: 20),
+            const SizedBox(width: 16),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1532,7 +1547,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           onRefresh: () async => refresh(),
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+            padding: const EdgeInsets.all(16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1553,10 +1568,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 450,
+                    maxCrossAxisExtent: 400,
                     mainAxisSpacing: 16,
                     crossAxisSpacing: 16,
-                    childAspectRatio: 3.5,
+                    childAspectRatio: 3,
                   ),
                   itemCount: infoCardsData.length,
                   itemBuilder: (context, index) {
@@ -1820,14 +1835,14 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
                   trailing: employee.isActive
                       ? TextButton(
                           onPressed: () => _confirmDeactivateUser(employee),
-                          child: Text(
+                          child: const Text(
                             'Deactivate',
-                            style: TextStyle(color: Theme.of(context).colorScheme.error),
+                            style: TextStyle(color: Colors.red),
                           ),
                         )
-                      : Text(
+                      : const Text(
                           'Deactivated',
-                          style: TextStyle(color: Colors.grey[600]),
+                          style: TextStyle(color: Colors.grey),
                         ),
                 ),
               );
@@ -1863,9 +1878,9 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(
+            child: const Text(
               'Deactivate',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              style: TextStyle(color: Colors.red),
             ),
           ),
         ],
@@ -2036,17 +2051,17 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
             const SizedBox(height: 16),
             Text(
               'Email: $email',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             Text(
               'Temporary Password: $password',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
             Text(
               'Note: This password will only be shown once.',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.error,
+                color: Colors.red[700],
                 fontStyle: FontStyle.italic,
               ),
             ),
@@ -2062,8 +2077,6 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     );
   }
 }
-
-// ======== NEW/MODIFIED SECTION: Complete Redesign of AdminReportingScreen ========
 
 class AdminReportingScreen extends StatefulWidget {
   const AdminReportingScreen({super.key});
@@ -2876,10 +2889,18 @@ class _MyCustomDropdownState extends State<MyCustomDropdown> {
       child: DropdownButton<String>(
         key: dropdownKey,
         value: currentDropdownValue,
-        hint: const Text('Assign'),
+        hint: const Text(
+          'Assign',
+          style: TextStyle(fontSize: 14, color: Colors.grey),
+        ),
         isExpanded: true,
         isDense: true,
         icon: const Icon(Icons.arrow_drop_down, size: 20),
+        style: const TextStyle(
+          fontSize: 14,
+          color: Colors.black,
+          overflow: TextOverflow.ellipsis,
+        ),
         items: dropdownItems,
         onChanged: widget.onChanged,
         selectedItemBuilder: (BuildContext context) {
@@ -2973,16 +2994,25 @@ class _StatusDropdownEditorState extends State<StatusDropdownEditor> {
     return DropdownButtonHideUnderline(
       child: DropdownButton<String>(
         value: _currentValue,
-        hint: const Text('Select Status'),
+        hint: const Text(
+          'Select Status',
+          style: TextStyle(fontSize: 14, color: Colors.grey),
+        ),
         isExpanded: true,
         isDense: true,
         icon: const Icon(Icons.arrow_drop_down, size: 20),
+        style: const TextStyle(
+          fontSize: 14,
+          color: Colors.black,
+          overflow: TextOverflow.ellipsis,
+        ),
         items: _statuses.map((String status) {
           return DropdownMenuItem<String>(
             value: status,
             child: Text(
               status,
               overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, color: Colors.black),
             ),
           );
         }).toList(),
@@ -2996,10 +3026,7 @@ class _StatusDropdownEditorState extends State<StatusDropdownEditor> {
           return _statuses.map((item) {
             return Container(
               alignment: Alignment.centerLeft,
-              child: Text(
-                item,
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: Text(item, overflow: TextOverflow.ellipsis),
             );
           }).toList();
         },
@@ -3008,6 +3035,7 @@ class _StatusDropdownEditorState extends State<StatusDropdownEditor> {
   }
 }
 
+// ======== PASTE THIS ENTIRE CLASS OVER THE OLD TaskDataSource ========
 class TaskDataSource extends DataGridSource {
   List<Map<String, dynamic>> tasks = [];
   List<UserModel> employees = [];
@@ -3033,6 +3061,7 @@ class TaskDataSource extends DataGridSource {
 
   void updateTasks(List<Map<String, dynamic>> newTasks) {
     tasks = newTasks;
+    // Discover columns only if they weren't provided from the database
     if (_dataColumnNames.isEmpty) {
       _discoverDataColumnNames();
     }
@@ -3059,14 +3088,20 @@ class TaskDataSource extends DataGridSource {
       _dataColumnNames = [];
       return;
     }
-    final Set<String> columnNames = {};
+    // This robustly discovers all possible column names from all tasks
+    // while preserving the original insertion order.
+    final orderedKeys = <String>[];
+    final seenKeys = <String>{}; // Use a Set for fast lookups
+
     for (var task in tasks) {
-      if (task['data'] is Map) {
-        (task['data'] as Map<String, dynamic>).keys.forEach(columnNames.add);
+      final taskData = task['data'] as Map<String, dynamic>? ?? {};
+      for (var key in taskData.keys) {
+        if (seenKeys.add(key)) {
+          orderedKeys.add(key);
+        }
       }
     }
-    columnNames.removeAll(['id', 'status', 'assignedTo', 'employee_remarks']);
-    _dataColumnNames = columnNames.toList()..sort();
+    _dataColumnNames = orderedKeys;
   }
 
   void disposeControllers() =>
@@ -3077,46 +3112,99 @@ class TaskDataSource extends DataGridSource {
   @override
   List<DataGridRow> get rows => _rows;
 
+  // --- SINGLE SOURCE OF TRUTH FOR COLUMN ORDER ---
+  List<String> _getUnifiedColumnList() {
+    return [
+      'id',
+      'status',
+      'assignedTo',
+      'employee_remarks',
+      ..._dataColumnNames, // The dynamic columns from the Excel file
+    ];
+  }
+
+  // REWRITTEN to use the unified column list
   void _buildDataGridRows() {
+    final unifiedColumns = _getUnifiedColumnList();
     _rows = tasks.map<DataGridRow>((task) {
-      final List<DataGridCell> cells = [
-        DataGridCell<String>(
-          columnName: 'id',
-          value: task['id'] as String? ?? 'N/A_ID',
-        ),
-        DataGridCell<String>(
-          columnName: 'status',
-          value: task['status'] as String? ?? 'Not Started',
-        ),
-        DataGridCell<String>(
-          columnName: 'assignedTo',
-          value: task['assignedTo'] as String?,
-        ),
-        DataGridCell<String>(
-          columnName: 'employee_remarks',
-          value: task['employee_remarks'] as String?,
-        ),
-      ];
       final taskData = task['data'] as Map<String, dynamic>? ?? {};
-      for (var colName in _dataColumnNames) {
-        cells.add(
-          DataGridCell<dynamic>(columnName: colName, value: taskData[colName]),
-        );
-      }
-      return DataGridRow(cells: cells);
+      return DataGridRow(
+        cells: unifiedColumns.map((colName) {
+          dynamic cellValue;
+          // Get the value from the correct part of the task map
+          if (colName == 'id' ||
+              colName == 'status' ||
+              colName == 'assignedTo' ||
+              colName == 'employee_remarks') {
+            cellValue = task[colName];
+          } else {
+            // It's a dynamic column from the 'data' map
+            cellValue = taskData[colName];
+          }
+          return DataGridCell(columnName: colName, value: cellValue);
+        }).toList(),
+      );
     }).toList();
   }
 
+  // REWRITTEN to use the unified column list
+  @override
+  List<GridColumn> getColumns(BuildContext? context) {
+    GridColumn buildColumn(
+      String name,
+      String label, {
+      double minWidth = 120,
+      bool visible = true,
+      ColumnWidthMode widthMode = ColumnWidthMode.auto,
+    }) {
+      return GridColumn(
+        columnName: name,
+        columnWidthMode: widthMode,
+        minimumWidth: minWidth,
+        visible: visible,
+        label: Container(
+          padding: const EdgeInsets.all(8.0),
+          alignment: Alignment.centerLeft,
+          child: Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      );
+    }
+
+    final unifiedColumns = _getUnifiedColumnList();
+    return unifiedColumns.map((name) {
+      switch (name) {
+        case 'id':
+          return buildColumn(name, 'ID', visible: false);
+        case 'status':
+          return buildColumn(name, 'Status', minWidth: 130);
+        case 'assignedTo':
+          return buildColumn(name, 'Assigned To', minWidth: 160);
+        case 'employee_remarks':
+          return buildColumn(name, 'Employee Remarks', minWidth: 250);
+        default: // This handles all dynamic columns from the Excel file
+          return buildColumn(name, name.replaceAll("_", " ").capitalizeFirst());
+      }
+    }).toList();
+  }
+
+  // REWRITTEN AND ROBUST to use the master column list as its guide
   @override
   DataGridRowAdapter buildRow(DataGridRow row) {
     final bool isAdmin = currentUserRoleModel?.role == 'admin';
     final bool isManager = currentUserRoleModel?.role == 'manager';
     final String currentUserId = currentUserRoleModel?.uid ?? "";
 
+    // Create a map for quick cell lookup by column name.
+    final Map<String, DataGridCell> cellMap = {
+      for (var cell in row.getCells()) cell.columnName: cell,
+    };
+
     final taskDataForRow = tasks.firstWhere(
-      (task) =>
-          task['id'] ==
-          row.getCells().firstWhere((c) => c.columnName == 'id').value,
+      (task) => task['id'] == cellMap['id']?.value,
       orElse: () => {},
     );
 
@@ -3134,13 +3222,17 @@ class TaskDataSource extends DataGridSource {
     final String taskIdForRow = taskDataForRow['id'] as String? ?? 'UNKNOWN_ID';
     final String assignedToUidInRow =
         taskDataForRow['assignedTo'] as String? ?? "";
-
     final bool isAssignedToCurrentUser = (assignedToUidInRow == currentUserId);
 
+    // Get the master list of columns. This is our guide.
+    final unifiedColumns = _getUnifiedColumnList();
+
+    // Build the list of widgets by iterating through the master list,
+    // guaranteeing the order matches the headers.
     return DataGridRowAdapter(
-      cells: row.getCells().map<Widget>((dataGridCell) {
-        final String columnName = dataGridCell.columnName;
-        final dynamic cellValue = dataGridCell.value;
+      cells: unifiedColumns.map<Widget>((columnName) {
+        final dataGridCell = cellMap[columnName];
+        final cellValue = dataGridCell?.value;
         final contentPadding = const EdgeInsets.symmetric(
           horizontal: 8.0,
           vertical: 12.0,
@@ -3202,17 +3294,9 @@ class TaskDataSource extends DataGridSource {
           );
         }
 
-        if (columnName == 'id') return buildTextCell(cellValue?.toString());
-
-        if (columnName == 'employee_remarks') {
-          // Remarks can only be edited by the assigned employee.
-          return isAssignedToCurrentUser
-              ? buildEditableCell(columnName, isSpecialColumn: true)
-              : buildTextCell(cellValue?.toString());
-        }
+        if (columnName == 'id') return const SizedBox.shrink();
 
         if (columnName == 'status') {
-          // Status can only be edited by the assigned employee, using a dropdown.
           if (isAssignedToCurrentUser) {
             return Container(
               alignment: Alignment.centerLeft,
@@ -3225,7 +3309,7 @@ class TaskDataSource extends DataGridSource {
               ),
             );
           } else {
-            return buildTextCell(cellValue?.toString(), isFaded: true);
+            return buildTextCell(cellValue?.toString());
           }
         }
 
@@ -3255,65 +3339,25 @@ class TaskDataSource extends DataGridSource {
                 isActive: false,
               ),
             );
-            return buildTextCell(employee.name, isFaded: true);
+            return buildTextCell(employee.name);
           }
+        }
+
+        if (columnName == 'employee_remarks') {
+          return isAssignedToCurrentUser
+              ? buildEditableCell(columnName, isSpecialColumn: true)
+              : buildTextCell(cellValue?.toString());
         }
 
         if (_dataColumnNames.contains(columnName)) {
           return (isAdmin || isManager)
               ? buildEditableCell(columnName)
-              : buildTextCell(cellValue?.toString(), isFaded: true);
+              : buildTextCell(cellValue?.toString());
         }
 
-        return buildTextCell('Col: $columnName?');
+        return buildTextCell('Unknown Col: $columnName');
       }).toList(),
     );
-  }
-
-  List<GridColumn> getColumns(BuildContext? context) {
-    GridColumn buildColumn(
-      String name,
-      String label, {
-      double minWidth = 120,
-      bool visible = true,
-      ColumnWidthMode widthMode = ColumnWidthMode.auto,
-    }) {
-      return GridColumn(
-        columnName: name,
-        columnWidthMode: widthMode,
-        minimumWidth: minWidth,
-        visible: visible,
-        label: Container(
-          padding: const EdgeInsets.all(8.0),
-          alignment: Alignment.centerLeft,
-          child: Text(
-            label,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      );
-    }
-
-    return [
-      buildColumn('id', 'ID', visible: false),
-      buildColumn('status', 'Status', minWidth: 130),
-      buildColumn('assignedTo', 'Assigned To', minWidth: 160),
-      ..._dataColumnNames
-          .map(
-            (colName) => buildColumn(
-              colName,
-              colName.replaceAll("_", " ").capitalizeFirst(),
-            ),
-          )
-          .toList(),
-      buildColumn(
-        'employee_remarks',
-        'Employee Remarks',
-        minWidth: 250,
-        widthMode: ColumnWidthMode.fill,
-      ),
-    ];
   }
 }
 
@@ -3351,11 +3395,13 @@ class ProjectDetailScreen extends StatelessWidget {
   }
 }
 
+// ======== PASTE THIS ENTIRE WIDGET OVER THE OLD UploadListScreen ========
 class UploadListScreen extends StatelessWidget {
   final ProjectModel project;
 
   const UploadListScreen({super.key, required this.project});
 
+  // THE DEFINITIVE FIX IS IN THIS METHOD
   Future<void> _pickAndUploadExcel(
     BuildContext context,
     SupabaseService supabaseService,
@@ -3365,179 +3411,162 @@ class UploadListScreen extends StatelessWidget {
       allowedExtensions: ['xlsx', 'xls', 'csv'],
       withData: true,
     );
-    if (result != null && result.files.single.bytes != null) {
-      PlatformFile file = result.files.single;
-      Uint8List fileBytes = file.bytes!;
-      String fileName = file.name;
+    if (result == null || result.files.single.bytes == null) {
+      logger.w("File selection was cancelled or file was empty.");
+      return;
+    }
+    PlatformFile file = result.files.single;
+    Uint8List fileBytes = file.bytes!;
+    String fileName = file.name;
 
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext context) => const Dialog(
-          child: Padding(
-            padding: EdgeInsets.all(20.0),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(width: 20),
-                Text("Processing File..."),
-              ],
-            ),
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) => const Dialog(
+        child: Padding(
+          padding: EdgeInsets.all(20.0),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 20),
+              Text("Processing File..."),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      List<Map<String, dynamic>> tasksData = [];
+      List<String> processedHeaderRow = [];
+
+      void processHeaders(List<String> rawHeaders) {
+        int unnamedColumnIndex = 1;
+        for (String header in rawHeaders) {
+          final trimmedHeader = header.trim();
+          if (trimmedHeader.isEmpty) {
+            processedHeaderRow.add('unnamed_column_$unnamedColumnIndex');
+            unnamedColumnIndex++;
+          } else {
+            processedHeaderRow.add(trimmedHeader);
+          }
+        }
+      }
+
+      if (fileName.toLowerCase().endsWith('.csv')) {
+        final csvString = String.fromCharCodes(fileBytes);
+        final List<List<dynamic>> csvTable = const CsvToListConverter(
+          shouldParseNumbers: false,
+        ).convert(csvString);
+        if (csvTable.isEmpty) throw Exception("CSV file is empty.");
+
+        final rawHeaders = csvTable.first.map((e) => e.toString()).toList();
+        processHeaders(rawHeaders);
+
+        for (int i = 1; i < csvTable.length; i++) {
+          final List<dynamic> dataRow = csvTable[i];
+          final Map<String, dynamic> rowData = {};
+          for (int j = 0; j < processedHeaderRow.length; j++) {
+            final key = processedHeaderRow[j];
+            final value = (j < dataRow.length) ? dataRow[j] : null;
+            rowData[key] = value?.toString();
+          }
+          if (rowData.values.any((v) => v != null && v.isNotEmpty)) {
+            tasksData.add(rowData);
+          }
+        }
+      } else {
+        var excelFile = excel.Excel.decodeBytes(fileBytes);
+        if (excelFile.tables.isEmpty ||
+            excelFile.tables.values.first.rows.isEmpty) {
+          throw Exception("Excel file is empty or has no readable sheets.");
+        }
+        var sheet = excelFile.tables.values.first;
+        final rawHeaders = sheet.rows.first
+            .map((cell) => cell?.value?.toString() ?? '')
+            .toList();
+        processHeaders(rawHeaders);
+
+        for (int i = 1; i < sheet.rows.length; i++) {
+          final originalRow = sheet.rows[i];
+          final Map<String, dynamic> rowData = {};
+          for (int j = 0; j < processedHeaderRow.length; j++) {
+            final key = processedHeaderRow[j];
+            final cell = (j < originalRow.length) ? originalRow[j] : null;
+            dynamic cellValue = cell?.value;
+
+            if (cellValue is excel.DateCellValue) {
+              rowData[key] = DateFormat('yyyy-MM-dd').format(
+                DateTime(cellValue.year, cellValue.month, cellValue.day),
+              );
+            } else if (cellValue is excel.DateTimeCellValue) {
+              rowData[key] = DateFormat('yyyy-MM-dd HH:mm:ss').format(
+                DateTime(
+                  cellValue.year,
+                  cellValue.month,
+                  cellValue.day,
+                  cellValue.hour,
+                  cellValue.minute,
+                  cellValue.second,
+                ),
+              );
+            } else if (cellValue is excel.TimeCellValue) {
+              rowData[key] = DateFormat('HH:mm:ss').format(
+                DateTime(
+                  0,
+                  1,
+                  1,
+                  cellValue.hour,
+                  cellValue.minute,
+                  cellValue.second,
+                ),
+              );
+            } else {
+              rowData[key] = cellValue?.toString();
+            }
+          }
+          if (rowData.values.any((v) => v != null && v.toString().isNotEmpty)) {
+            tasksData.add(rowData);
+          }
+        }
+      }
+
+      if (tasksData.isEmpty) {
+        throw Exception("No data rows found in the file.");
+      }
+
+      await supabaseService.uploadTasksFromExcel(
+        project.id,
+        fileName,
+        tasksData,
+        processedHeaderRow, // Pass the processed headers to the database
+      );
+
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('"$fileName" uploaded successfully!')),
+      );
+    } catch (e, st) {
+      logger.e(
+        "Error during file processing and upload.",
+        error: e,
+        stackTrace: st,
+      );
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Error processing file: ${e.toString().replaceFirst("Exception: ", "")}',
           ),
         ),
       );
-
-      try {
-        List<Map<String, dynamic>> tasksData;
-        List<String> headerRow;
-
-        if (fileName.toLowerCase().endsWith('.csv')) {
-          final csvString = String.fromCharCodes(fileBytes);
-          final List<List<dynamic>> csvTable = const CsvToListConverter()
-              .convert(csvString);
-          if (csvTable.length < 2) {
-            throw Exception(
-              "CSV file must have a header row and at least one data row.",
-            );
-          }
-
-          headerRow = csvTable[0]
-              .map((e) => e.toString().trim())
-              .where((header) => header.isNotEmpty)
-              .toList();
-
-          if (headerRow.isEmpty) {
-            throw Exception("No valid column headers found in the CSV file.");
-          }
-
-          tasksData = [];
-          for (int i = 1; i < csvTable.length; i++) {
-            final List<dynamic> cleanedDataRow = csvTable[i]
-                .where((cell) => cell?.toString().trim().isNotEmpty ?? false)
-                .toList();
-            final Map<String, dynamic> rowData = {};
-            for (int j = 0; j < headerRow.length; j++) {
-              if (j < cleanedDataRow.length) {
-                rowData[headerRow[j]] = cleanedDataRow[j];
-              } else {
-                rowData[headerRow[j]] = null;
-              }
-            }
-            if (rowData.isNotEmpty) {
-              tasksData.add(rowData);
-            }
-          }
-        } else {
-          var excelFile = excel.Excel.decodeBytes(fileBytes);
-          if (excelFile.tables.isEmpty ||
-              excelFile.tables.values.first.rows.isEmpty) {
-            throw Exception("Excel file is empty or has no readable sheets.");
-          }
-          var sheet = excelFile.tables.values.first;
-
-          headerRow = sheet.rows.first
-              .map((cell) => cell?.value?.toString().trim() ?? '')
-              .where((header) => header.isNotEmpty)
-              .toList();
-
-          if (headerRow.isEmpty) {
-            throw Exception("No valid column headers found in the Excel file.");
-          }
-
-          tasksData = [];
-          for (int i = 1; i < sheet.rows.length; i++) {
-            var originalRow = sheet.rows[i];
-            var cleanedDataRow = originalRow
-                .where((cell) => cell?.value != null)
-                .map((cell) => cell!.value)
-                .toList();
-            Map<String, dynamic> rowData = {};
-            for (int j = 0; j < headerRow.length; j++) {
-              dynamic cellValue;
-              if (j < cleanedDataRow.length) {
-                cellValue = cleanedDataRow[j];
-                if (cellValue is excel.DateCellValue) {
-                  rowData[headerRow[j]] = DateFormat('yyyy-MM-dd').format(
-                    DateTime(cellValue.year, cellValue.month, cellValue.day),
-                  );
-                } else if (cellValue is excel.DateTimeCellValue) {
-                  rowData[headerRow[j]] = DateFormat('yyyy-MM-dd HH:mm:ss')
-                      .format(
-                        DateTime(
-                          cellValue.year,
-                          cellValue.month,
-                          cellValue.day,
-                          cellValue.hour,
-                          cellValue.minute,
-                          cellValue.second,
-                        ),
-                      );
-                } else if (cellValue is excel.TimeCellValue) {
-                  rowData[headerRow[j]] = DateFormat('HH:mm:ss').format(
-                    DateTime(
-                      0,
-                      1,
-                      1,
-                      cellValue.hour,
-                      cellValue.minute,
-                      cellValue.second,
-                    ),
-                  );
-                } else {
-                  rowData[headerRow[j]] = cellValue?.toString();
-                }
-              } else {
-                rowData[headerRow[j]] = null;
-              }
-            }
-            if (rowData.values.any(
-              (v) => v != null && v.toString().isNotEmpty,
-            )) {
-              tasksData.add(rowData);
-            }
-          }
-        }
-
-        if (tasksData.isEmpty) {
-          throw Exception("No data rows found in the file.");
-        }
-
-        await supabaseService.uploadTasksFromExcel(
-          project.id,
-          fileName,
-          tasksData,
-          headerRow,
-        );
-
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('"$fileName" uploaded successfully!')),
-        );
-      } catch (e, st) {
-        logger.e(
-          "Error during file processing and upload.",
-          error: e,
-          stackTrace: st,
-        );
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Error processing file: ${e.toString().replaceFirst("Exception: ", "")}',
-            ),
-          ),
-        );
-      }
-    } else {
-      logger.w("File selection was cancelled or file was empty.");
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final supabaseService = Provider.of<SupabaseService>(context);
-
     return Scaffold(
       body: StreamBuilder<List<UploadModel>>(
         stream: supabaseService.getUploadsForProject(project.id),
@@ -3851,16 +3880,17 @@ class _TaskListScreenState extends State<TaskListScreen> {
         try {
           await supabaseService.updateTask(taskId, updatedFields);
 
-          // Manual UI update for instant feedback in the data grid.
-          // This is a workaround for potential stream delays in some environments.
           if (mounted) {
-            final taskIndex =
-                _taskDataSource.tasks.indexWhere((t) => t['id'] == taskId);
+            final taskIndex = _taskDataSource.tasks.indexWhere(
+              (t) => t['id'] == taskId,
+            );
             if (taskIndex != -1) {
-              final newTasks =
-                  List<Map<String, dynamic>>.from(_taskDataSource.tasks);
-              final updatedTask =
-                  Map<String, dynamic>.from(newTasks[taskIndex]);
+              final newTasks = List<Map<String, dynamic>>.from(
+                _taskDataSource.tasks,
+              );
+              final updatedTask = Map<String, dynamic>.from(
+                newTasks[taskIndex],
+              );
 
               updatedFields.forEach((key, value) {
                 if (key == 'data') {
@@ -3894,7 +3924,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch the service to trigger rebuilds on notifyListeners
     context.watch<SupabaseService>();
 
     _currentUserModel = context.watch<UserModelNotifier>().userModel;
@@ -3918,10 +3947,10 @@ class _TaskListScreenState extends State<TaskListScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.project.name, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white)),
+            Text(widget.project.name, style: const TextStyle(fontSize: 14)),
             Text(
               widget.upload.fileName,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -3957,16 +3986,52 @@ class _TaskListScreenState extends State<TaskListScreen> {
             return Center(child: Text(message));
           }
 
-          return SfDataGrid(
-            key: _dataGridKey,
-            source: _taskDataSource,
-            columns: _taskDataSource.getColumns(context),
-            columnWidthMode: ColumnWidthMode.auto,
-            allowEditing: true,
-            selectionMode: SelectionMode.none,
-            navigationMode: GridNavigationMode.cell,
-            gridLinesVisibility: GridLinesVisibility.both,
-            headerGridLinesVisibility: GridLinesVisibility.both,
+          return ResponsiveLayout(
+            mobileBody: ListView.builder(
+              padding: const EdgeInsets.only(top: 8, bottom: 8),
+              itemCount: tasksToShow.length,
+              itemBuilder: (context, index) {
+                final task = tasksToShow[index];
+                final employee = _employees.firstWhere(
+                  (e) => e.uid == task['assignedTo'],
+                  orElse: () => UserModel(
+                    uid: '',
+                    email: '',
+                    name: 'Unassigned',
+                    role: '',
+                    isActive: false,
+                  ),
+                );
+                return TaskCard(
+                  task: task,
+                  assignedEmployee: employee,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailScreen(
+                          task: task,
+                          employees: _employees,
+                          project: widget.project,
+                          upload: widget.upload,
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+            desktopBody: SfDataGrid(
+              key: _dataGridKey,
+              source: _taskDataSource,
+              columns: _taskDataSource.getColumns(context),
+              columnWidthMode: ColumnWidthMode.auto,
+              allowEditing: true,
+              selectionMode: SelectionMode.none,
+              navigationMode: GridNavigationMode.cell,
+              gridLinesVisibility: GridLinesVisibility.both,
+              headerGridLinesVisibility: GridLinesVisibility.both,
+            ),
           );
         },
       ),
@@ -4027,7 +4092,7 @@ class TaskCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12.0),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -4042,7 +4107,7 @@ class TaskCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   Chip(
                     avatar: Icon(statusIcon, color: statusColor, size: 16),
                     label: Text(status),
@@ -4052,16 +4117,12 @@ class TaskCard extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               const Divider(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   const Icon(
@@ -4185,13 +4246,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   Widget build(BuildContext context) {
     final userModel = context.watch<UserModelNotifier>().userModel;
 
-    // Combine admin and manager into a single check
     final bool isPrivilegedUser =
         userModel?.role == 'admin' || userModel?.role == 'manager';
     final bool isAssignedToCurrentUser =
         _currentTask['assignedTo'] == userModel?.uid;
 
-    // Only the assigned employee can edit the status and remarks fields.
     final bool canEditProtectedFields = isAssignedToCurrentUser;
 
     final taskData = _currentTask['data'] as Map<String, dynamic>? ?? {};
@@ -4334,7 +4393,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           value: null,
           child: Text(
             'Unassigned',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
+            style: TextStyle(fontStyle: FontStyle.italic),
           ),
         ),
         ...widget.employees
@@ -4351,7 +4410,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Text(
           'Sub-task functionality to be implemented here.',
-          style: Theme.of(context).textTheme.bodyMedium,
+          style: TextStyle(color: Colors.grey[600]),
         ),
       ),
     );
@@ -4403,7 +4462,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     return ListTile(
                       title: Text(
                         comment.userName,
-                        style: Theme.of(context).textTheme.titleSmall,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       subtitle: Text(comment.comment),
                       trailing: Text(

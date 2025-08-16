@@ -3796,6 +3796,30 @@ class _TaskListScreenState extends State<TaskListScreen> {
       _debouncer.run(() async {
         try {
           await supabaseService.updateTask(taskId, updatedFields);
+
+          // Manual UI update for instant feedback in the data grid.
+          // This is a workaround for potential stream delays in some environments.
+          if (mounted) {
+            final taskIndex =
+                _taskDataSource.tasks.indexWhere((t) => t['id'] == taskId);
+            if (taskIndex != -1) {
+              final newTasks =
+                  List<Map<String, dynamic>>.from(_taskDataSource.tasks);
+              final updatedTask =
+                  Map<String, dynamic>.from(newTasks[taskIndex]);
+
+              updatedFields.forEach((key, value) {
+                if (key == 'data') {
+                  updatedTask['data'] = value;
+                } else {
+                  updatedTask[key] = value;
+                }
+              });
+
+              newTasks[taskIndex] = updatedTask;
+              _taskDataSource.updateTasks(newTasks);
+            }
+          }
         } catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(
@@ -3816,6 +3840,9 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch the service to trigger rebuilds on notifyListeners
+    context.watch<SupabaseService>();
+
     _currentUserModel = context.watch<UserModelNotifier>().userModel;
     if (_currentUserModel != null) {
       _currentUserRoleModel = RoleModel(

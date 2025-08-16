@@ -3164,20 +3164,7 @@ class TaskDataSource extends DataGridSource {
         if (columnName == 'id') return buildTextCell(cellValue?.toString());
 
         if (columnName == 'employee_remarks') {
-          // ======== START DEBUG BLOCK ========
-          final String taskId = taskDataForRow['id'] ?? 'UNKNOWN_ID';
-          if (columnName == 'employee_remarks') {
-            print('----- DEBUG: TaskDataSource for Task ID: $taskId -----');
-            print('Current User Role: ${currentUserRoleModel?.role}');
-            print('Current User ID: $currentUserId');
-            print('Task Assigned To ID: $assignedToUidInRow');
-            print('isAdmin? $isAdmin');
-            print('isManager? $isManager');
-            print('isAssignedToCurrentUser? $isAssignedToCurrentUser');
-            print('----------------------------------------------------');
-          }
-          // ======== END DEBUG BLOCK ========
-          // ચોક્કસ શરત: વપરાશકર્તા એડમિન/મેનેજર ન હોવો જોઈએ અને કાર્ય તેને સોંપેલું હોવું જોઈએ.
+          // Employees can only edit remarks on tasks assigned to them.
           final bool canEditRemarks =
               !isAdmin && !isManager && isAssignedToCurrentUser;
 
@@ -3187,7 +3174,8 @@ class TaskDataSource extends DataGridSource {
         }
 
         if (columnName == 'status') {
-          return (isAdmin || isManager)
+          final bool canEditStatus = isAdmin || isManager || isAssignedToCurrentUser;
+          return canEditStatus
               ? buildEditableCell(columnName, isSpecialColumn: true)
               : buildTextCell(cellValue?.toString(), isFaded: true);
         }
@@ -4162,24 +4150,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final bool isAssignedToCurrentUser =
         _currentTask['assignedTo'] == userModel?.uid;
 
-    // Create the specific condition here
+    // Employees can edit remarks if the task is assigned to them.
     final bool canEditRemarks = !isPrivilegedUser && isAssignedToCurrentUser;
+
+    // Admins, managers, or the assigned employee can edit the status.
+    final bool canEditStatus = isPrivilegedUser || isAssignedToCurrentUser;
 
     final taskData = _currentTask['data'] as Map<String, dynamic>? ?? {};
     final title =
         taskData['Task Name'] ?? taskData['task_name'] ?? 'Task Details';
-    // ======== START DEBUG BLOCK ========
-    print(
-      '----- DEBUG: TaskDetailScreen for Task ID: ${_currentTask['id']} -----',
-    );
-    print('Current User Role: ${userModel?.role}');
-    print('Current User ID: ${userModel?.uid}');
-    print('Task Assigned To ID: ${_currentTask['assignedTo']}');
-    print('isPrivilegedUser? $isPrivilegedUser');
-    print('isAssignedToCurrentUser? $isAssignedToCurrentUser');
-    print('FINAL canEditRemarks? $canEditRemarks');
-    print('----------------------------------------------------');
-    // ======== END DEBUG BLOCK ========
+
     return Scaffold(
       appBar: AppBar(title: Text(title)),
       body: SingleChildScrollView(
@@ -4193,7 +4173,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    _buildStatusDropdown(isPrivilegedUser),
+                    _buildStatusDropdown(canEditStatus),
                     const SizedBox(height: 16),
                     _buildAssigneeDropdown(isPrivilegedUser),
                   ],

@@ -1198,11 +1198,10 @@ class _AuthScreenState extends State<AuthScreen> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 400),
             child: Card(
-              elevation: 4,
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 24.0,
-                  vertical: 32.0,
+                  horizontal: 32.0,
+                  vertical: 40.0,
                 ),
                 child: Form(
                   key: _formKey,
@@ -1215,7 +1214,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         size: 60,
                         color: theme.colorScheme.primary,
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 24),
                       Text(
                         _isLogin ? 'Welcome Back!' : 'Create Admin Account',
                         style: theme.textTheme.headlineMedium,
@@ -1310,30 +1309,6 @@ class _AuthScreenState extends State<AuthScreen> {
 }
 
 // ======== WIDGETS (REUSABLE COMPONENTS) ========
-class ResponsiveLayout extends StatelessWidget {
-  final Widget mobileBody;
-  final Widget desktopBody;
-
-  const ResponsiveLayout({
-    Key? key,
-    required this.mobileBody,
-    required this.desktopBody,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 800) {
-          return mobileBody;
-        } else {
-          return desktopBody;
-        }
-      },
-    );
-  }
-}
-
 class InfoCard extends StatelessWidget {
   final String title;
   final String value;
@@ -1354,15 +1329,15 @@ class InfoCard extends StatelessWidget {
     return Card(
       elevation: 1,
       child: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Row(
           children: [
             CircleAvatar(
-              radius: 24,
+              radius: 28,
               backgroundColor: color.withOpacity(0.15),
-              child: Icon(icon, size: 28, color: color),
+              child: Icon(icon, size: 32, color: color),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 20),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1557,7 +1532,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           onRefresh: () async => refresh(),
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1578,10 +1553,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 400,
+                    maxCrossAxisExtent: 450,
                     mainAxisSpacing: 16,
                     crossAxisSpacing: 16,
-                    childAspectRatio: 3,
+                    childAspectRatio: 3.5,
                   ),
                   itemCount: infoCardsData.length,
                   itemBuilder: (context, index) {
@@ -1845,14 +1820,14 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
                   trailing: employee.isActive
                       ? TextButton(
                           onPressed: () => _confirmDeactivateUser(employee),
-                          child: const Text(
+                          child: Text(
                             'Deactivate',
-                            style: TextStyle(color: Colors.red),
+                            style: TextStyle(color: Theme.of(context).colorScheme.error),
                           ),
                         )
-                      : const Text(
+                      : Text(
                           'Deactivated',
-                          style: TextStyle(color: Colors.grey),
+                          style: TextStyle(color: Colors.grey[600]),
                         ),
                 ),
               );
@@ -1888,9 +1863,9 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(
+            child: Text(
               'Deactivate',
-              style: TextStyle(color: Colors.red),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),
         ],
@@ -2061,17 +2036,17 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
             const SizedBox(height: 16),
             Text(
               'Email: $email',
-              style: const TextStyle(fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             Text(
               'Temporary Password: $password',
-              style: const TextStyle(fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
             Text(
               'Note: This password will only be shown once.',
               style: TextStyle(
-                color: Colors.red[700],
+                color: Theme.of(context).colorScheme.error,
                 fontStyle: FontStyle.italic,
               ),
             ),
@@ -2901,18 +2876,10 @@ class _MyCustomDropdownState extends State<MyCustomDropdown> {
       child: DropdownButton<String>(
         key: dropdownKey,
         value: currentDropdownValue,
-        hint: const Text(
-          'Assign',
-          style: TextStyle(fontSize: 14, color: Colors.grey),
-        ),
+        hint: const Text('Assign'),
         isExpanded: true,
         isDense: true,
         icon: const Icon(Icons.arrow_drop_down, size: 20),
-        style: const TextStyle(
-          fontSize: 14,
-          color: Colors.black,
-          overflow: TextOverflow.ellipsis,
-        ),
         items: dropdownItems,
         onChanged: widget.onChanged,
         selectedItemBuilder: (BuildContext context) {
@@ -3006,25 +2973,16 @@ class _StatusDropdownEditorState extends State<StatusDropdownEditor> {
     return DropdownButtonHideUnderline(
       child: DropdownButton<String>(
         value: _currentValue,
-        hint: const Text(
-          'Select Status',
-          style: TextStyle(fontSize: 14, color: Colors.grey),
-        ),
+        hint: const Text('Select Status'),
         isExpanded: true,
         isDense: true,
         icon: const Icon(Icons.arrow_drop_down, size: 20),
-        style: const TextStyle(
-          fontSize: 14,
-          color: Colors.black,
-          overflow: TextOverflow.ellipsis,
-        ),
         items: _statuses.map((String status) {
           return DropdownMenuItem<String>(
             value: status,
             child: Text(
               status,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 14, color: Colors.black),
             ),
           );
         }).toList(),
@@ -3960,10 +3918,10 @@ class _TaskListScreenState extends State<TaskListScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.project.name, style: const TextStyle(fontSize: 14)),
+            Text(widget.project.name, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white)),
             Text(
               widget.upload.fileName,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white),
             ),
           ],
         ),
@@ -3999,52 +3957,16 @@ class _TaskListScreenState extends State<TaskListScreen> {
             return Center(child: Text(message));
           }
 
-          return ResponsiveLayout(
-            mobileBody: ListView.builder(
-              padding: const EdgeInsets.only(top: 8, bottom: 8),
-              itemCount: tasksToShow.length,
-              itemBuilder: (context, index) {
-                final task = tasksToShow[index];
-                final employee = _employees.firstWhere(
-                  (e) => e.uid == task['assignedTo'],
-                  orElse: () => UserModel(
-                    uid: '',
-                    email: '',
-                    name: 'Unassigned',
-                    role: '',
-                    isActive: false,
-                  ),
-                );
-                return TaskCard(
-                  task: task,
-                  assignedEmployee: employee,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => TaskDetailScreen(
-                          task: task,
-                          employees: _employees,
-                          project: widget.project,
-                          upload: widget.upload,
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-            desktopBody: SfDataGrid(
-              key: _dataGridKey,
-              source: _taskDataSource,
-              columns: _taskDataSource.getColumns(context),
-              columnWidthMode: ColumnWidthMode.auto,
-              allowEditing: true,
-              selectionMode: SelectionMode.none,
-              navigationMode: GridNavigationMode.cell,
-              gridLinesVisibility: GridLinesVisibility.both,
-              headerGridLinesVisibility: GridLinesVisibility.both,
-            ),
+          return SfDataGrid(
+            key: _dataGridKey,
+            source: _taskDataSource,
+            columns: _taskDataSource.getColumns(context),
+            columnWidthMode: ColumnWidthMode.auto,
+            allowEditing: true,
+            selectionMode: SelectionMode.none,
+            navigationMode: GridNavigationMode.cell,
+            gridLinesVisibility: GridLinesVisibility.both,
+            headerGridLinesVisibility: GridLinesVisibility.both,
           );
         },
       ),
@@ -4105,7 +4027,7 @@ class TaskCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12.0),
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -4120,7 +4042,7 @@ class TaskCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 12),
                   Chip(
                     avatar: Icon(statusIcon, color: statusColor, size: 16),
                     label: Text(status),
@@ -4130,12 +4052,16 @@ class TaskCard extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               const Divider(),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   const Icon(
@@ -4408,7 +4334,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           value: null,
           child: Text(
             'Unassigned',
-            style: TextStyle(fontStyle: FontStyle.italic),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
           ),
         ),
         ...widget.employees
@@ -4425,7 +4351,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Text(
           'Sub-task functionality to be implemented here.',
-          style: TextStyle(color: Colors.grey[600]),
+          style: Theme.of(context).textTheme.bodyMedium,
         ),
       ),
     );
@@ -4477,7 +4403,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     return ListTile(
                       title: Text(
                         comment.userName,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        style: Theme.of(context).textTheme.titleSmall,
                       ),
                       subtitle: Text(comment.comment),
                       trailing: Text(

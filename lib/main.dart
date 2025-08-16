@@ -2965,6 +2965,91 @@ class _MyCustomDropdownState extends State<MyCustomDropdown> {
   }
 }
 
+class StatusDropdownEditor extends StatefulWidget {
+  final String? value;
+  final Function(String?) onChanged;
+  final DataGridRow row;
+
+  const StatusDropdownEditor({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    required this.row,
+  });
+
+  @override
+  _StatusDropdownEditorState createState() => _StatusDropdownEditorState();
+}
+
+class _StatusDropdownEditorState extends State<StatusDropdownEditor> {
+  final List<String> _statuses = [
+    "Not Started",
+    "In Progress",
+    "Completed",
+    "On Hold",
+    "Under Review",
+  ];
+
+  String? _currentValue;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentValue = widget.value;
+    if (!_statuses.contains(_currentValue)) {
+      _currentValue = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: _currentValue,
+        hint: const Text(
+          'Select Status',
+          style: TextStyle(fontSize: 14, color: Colors.grey),
+        ),
+        isExpanded: true,
+        isDense: true,
+        icon: const Icon(Icons.arrow_drop_down, size: 20),
+        style: const TextStyle(
+          fontSize: 14,
+          color: Colors.black,
+          overflow: TextOverflow.ellipsis,
+        ),
+        items: _statuses.map((String status) {
+          return DropdownMenuItem<String>(
+            value: status,
+            child: Text(
+              status,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, color: Colors.black),
+            ),
+          );
+        }).toList(),
+        onChanged: (String? newValue) {
+          setState(() {
+            _currentValue = newValue;
+          });
+          widget.onChanged(newValue);
+        },
+        selectedItemBuilder: (BuildContext context) {
+          return _statuses.map((item) {
+            return Container(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                item,
+                overflow: TextOverflow.ellipsis,
+              ),
+            );
+          }).toList();
+        },
+      ),
+    );
+  }
+}
+
 class TaskDataSource extends DataGridSource {
   List<Map<String, dynamic>> tasks = [];
   List<UserModel> employees = [];
@@ -3169,10 +3254,21 @@ class TaskDataSource extends DataGridSource {
         }
 
         if (columnName == 'status') {
-          // Status can only be edited by the assigned employee.
-          return isAssignedToCurrentUser
-              ? buildEditableCell(columnName, isSpecialColumn: true)
-              : buildTextCell(cellValue?.toString(), isFaded: true);
+          // Status can only be edited by the assigned employee, using a dropdown.
+          if (isAssignedToCurrentUser) {
+            return Container(
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: StatusDropdownEditor(
+                value: cellValue as String?,
+                row: row,
+                onChanged: (newValue) =>
+                    _onCellValueChangedCallback(row, 'status', newValue),
+              ),
+            );
+          } else {
+            return buildTextCell(cellValue?.toString(), isFaded: true);
+          }
         }
 
         if (columnName == 'assignedTo') {

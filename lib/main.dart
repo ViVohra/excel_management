@@ -3162,18 +3162,15 @@ class TaskDataSource extends DataGridSource {
         if (columnName == 'id') return buildTextCell(cellValue?.toString());
 
         if (columnName == 'employee_remarks') {
-          // Employees can only edit remarks on tasks assigned to them.
-          final bool canEditRemarks =
-              !isAdmin && !isManager && isAssignedToCurrentUser;
-
-          return canEditRemarks
+          // Remarks can only be edited by the assigned employee.
+          return isAssignedToCurrentUser
               ? buildEditableCell(columnName, isSpecialColumn: true)
               : buildTextCell(cellValue?.toString());
         }
 
         if (columnName == 'status') {
-          final bool canEditStatus = isAdmin || isManager || isAssignedToCurrentUser;
-          return canEditStatus
+          // Status can only be edited by the assigned employee.
+          return isAssignedToCurrentUser
               ? buildEditableCell(columnName, isSpecialColumn: true)
               : buildTextCell(cellValue?.toString(), isFaded: true);
         }
@@ -4145,11 +4142,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final bool isAssignedToCurrentUser =
         _currentTask['assignedTo'] == userModel?.uid;
 
-    // Employees can edit remarks if the task is assigned to them.
-    final bool canEditRemarks = !isPrivilegedUser && isAssignedToCurrentUser;
-
-    // Admins, managers, or the assigned employee can edit the status.
-    final bool canEditStatus = isPrivilegedUser || isAssignedToCurrentUser;
+    // Only the assigned employee can edit the status and remarks fields.
+    final bool canEditProtectedFields = isAssignedToCurrentUser;
 
     final taskData = _currentTask['data'] as Map<String, dynamic>? ?? {};
     final title =
@@ -4168,7 +4162,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    _buildStatusDropdown(canEditStatus),
+                    _buildStatusDropdown(canEditProtectedFields),
                     const SizedBox(height: 16),
                     _buildAssigneeDropdown(isPrivilegedUser),
                   ],
@@ -4200,7 +4194,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 child: _buildTextField(
                   'employee_remarks',
                   'Add comments or updates',
-                  canEditRemarks, // <-- Use the new and correct condition here
+                  canEditProtectedFields,
                 ),
               ),
             ),

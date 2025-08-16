@@ -3,12 +3,16 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:collection/collection.dart';
 import 'package:csv/csv.dart';
+import 'package:equatable/equatable.dart';
 import 'package:excel/excel.dart' as excel;
 import 'package:file_picker/file_picker.dart';
+import 'package:file_saver/file_saver.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:provider/provider.dart';
@@ -69,14 +73,14 @@ class RoleModel {
   }
 }
 
-class UserModel {
+class UserModel extends Equatable {
   final String uid;
   final String email;
   final String name;
   final String role;
   final bool isActive;
 
-  UserModel({
+  const UserModel({
     required this.uid,
     required this.email,
     required this.name,
@@ -93,9 +97,12 @@ class UserModel {
       isActive: map['isActive'] as bool? ?? true,
     );
   }
+
+  @override
+  List<Object?> get props => [uid, email, name, role, isActive];
 }
 
-class ProjectModel {
+class ProjectModel extends Equatable {
   final String id;
   final String name;
   final String? description;
@@ -103,7 +110,7 @@ class ProjectModel {
   final DateTime? startDate;
   final DateTime? endDate;
 
-  ProjectModel({
+  const ProjectModel({
     required this.id,
     required this.name,
     this.description,
@@ -126,6 +133,16 @@ class ProjectModel {
           : DateTime.tryParse(map['end_date'] as String),
     );
   }
+
+  @override
+  List<Object?> get props => [
+    id,
+    name,
+    description,
+    status,
+    startDate,
+    endDate,
+  ];
 }
 
 class UploadModel {
@@ -372,19 +389,6 @@ class SupabaseService with ChangeNotifier {
   static const _getUploadsForUserInProjectRpc =
       'get_uploads_for_user_in_project';
   static const _getProjectsForUserRpc = 'get_projects_for_user';
-  static const _getFullReportDataRpc = 'get_full_report_data';
-
-  Future<List<Map<String, dynamic>>> getFullReportData() async {
-    logger.d('Fetching full report data.');
-    try {
-      final response = await _supabase.rpc(_getFullReportDataRpc);
-      logger.i('Successfully fetched full report data.');
-      return List<Map<String, dynamic>>.from(response);
-    } catch (e, st) {
-      logger.e('Error fetching full report data', error: e, stackTrace: st);
-      throw Exception('Failed to fetch report data: $e');
-    }
-  }
 
   Future<Map<String, dynamic>> getAdminDashboardSummary() async {
     logger.d('Fetching admin dashboard summary.');
@@ -766,86 +770,77 @@ class SupabaseService with ChangeNotifier {
         );
   }
 
-  Future<Map<String, dynamic>> getReportOverview(
-    DateTimeRange dateRange,
-  ) async {
-    final params = {
-      'start_date': DateFormat('yyyy-MM-dd').format(dateRange.start),
-      'end_date': DateFormat('yyyy-MM-dd').format(dateRange.end),
-    };
-    logger.d('Fetching report overview with params: $params');
+  Future<List<Map<String, dynamic>>> getFilteredTaskReport({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? projectId,
+    String? userId,
+    String? status,
+  }) async {
+    logger.d(
+      'Fetching filtered task report with params: '
+      'startDate: $startDate, endDate: $endDate, projectId: $projectId, '
+      'userId: $userId, status: $status',
+    );
     try {
       final response = await _supabase.rpc(
-        'get_report_overview',
-        params: params,
+        'get_filtered_task_report',
+        params: {
+          'start_date_param': startDate?.toIso8601String(),
+          'end_date_param': endDate?.toIso8601String(),
+          'project_id_param': projectId,
+          'user_id_param': userId,
+          'status_param': status,
+        },
       );
-      final Map<String, dynamic> overview = {
-        'kpis': <String, dynamic>{},
-        'pie_chart_data': <String, dynamic>{},
-      };
+      logger.i('Successfully fetched filtered task report.');
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e, st) {
+      logger.e('Error fetching filtered task report', error: e, stackTrace: st);
+      throw Exception('Failed to generate report. Please try again.');
+    }
+  }
 
-      final List<dynamic> data = response;
-      for (var item in data) {
-        final Map<String, dynamic> metricMap = Map<String, dynamic>.from(item);
-        final String metric = metricMap['metric'] as String;
-        final num value = metricMap['value'] as num;
-
-        if (metric == 'tasks_completed' ||
-            metric == 'overdue_tasks' ||
-            metric == 'tasks_in_progress') {
-          (overview['kpis'] as Map<String, dynamic>)[metric] = value.toDouble();
-        } else {
-          (overview['pie_chart_data'] as Map<String, dynamic>)[metric] = value
-              .toDouble();
-        }
+  Future<void> updateProject(
+    String projectId,
+    String name,
+    String description,
+  ) async {
+    logger.i('Updating project: $projectId with name: $name');
+    try {
+      await _supabase
+          .from('projects')
+          .update({'name': name, 'description': description})
+          .eq('id', projectId);
+      logger.i('Project "$name" updated successfully.');
+      notifyListeners();
+    } on PostgrestException catch (e) {
+      if (e.code == '23505') {
+        throw Exception('A project with this name already exists.');
       }
-      logger.i('Successfully fetched report overview.');
-      return overview;
+      throw Exception('Database Error: ${e.message}');
     } catch (e, st) {
-      logger.e('Error fetching report overview', error: e, stackTrace: st);
-      rethrow;
+      logger.e('Error updating project: $name', error: e, stackTrace: st);
+      throw Exception('Failed to update project.');
     }
   }
 
-  Future<List<Map<String, dynamic>>> getProjectSummaries(
-    DateTimeRange dateRange,
-  ) async {
-    final params = {
-      'start_date': DateFormat('yyyy-MM-dd').format(dateRange.start),
-      'end_date': DateFormat('yyyy-MM-dd').format(dateRange.end),
-    };
-    logger.d('Fetching project summaries with params: $params');
+  Future<void> deleteProject(String projectId) async {
+    logger.w('Attempting to delete project: $projectId');
     try {
-      final response = await _supabase.rpc(
-        'get_project_summaries',
-        params: params,
+      await _supabase.from('projects').delete().eq('id', projectId);
+      logger.i('Project $projectId deleted successfully.');
+      notifyListeners();
+    } on PostgrestException catch (e, st) {
+      logger.e(
+        'Database error deleting project: $projectId',
+        error: e,
+        stackTrace: st,
       );
-      logger.i('Successfully fetched project summaries.');
-      return List<Map<String, dynamic>>.from(response);
+      throw Exception('Database Error: ${e.message}');
     } catch (e, st) {
-      logger.e('Error fetching project summaries', error: e, stackTrace: st);
-      rethrow;
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> getEmployeePerformance(
-    DateTimeRange dateRange,
-  ) async {
-    final params = {
-      'start_date': DateFormat('yyyy-MM-dd').format(dateRange.start),
-      'end_date': DateFormat('yyyy-MM-dd').format(dateRange.end),
-    };
-    logger.d('Fetching employee performance with params: $params');
-    try {
-      final response = await _supabase.rpc(
-        'get_employee_performance',
-        params: params,
-      );
-      logger.i('Successfully fetched employee performance.');
-      return List<Map<String, dynamic>>.from(response);
-    } catch (e, st) {
-      logger.e('Error fetching employee performance', error: e, stackTrace: st);
-      rethrow;
+      logger.e('Error deleting project: $projectId', error: e, stackTrace: st);
+      throw Exception('Failed to delete project.');
     }
   }
 }
@@ -894,7 +889,7 @@ class UserModelNotifier with ChangeNotifier {
   UserModelNotifier(this._userModel);
 
   void update(UserModel? newUserModel) {
-    if (_userModel?.uid != newUserModel?.uid) {
+    if (_userModel != newUserModel) {
       logger.i(
         'UserModelNotifier updated. New user: ${newUserModel?.name}, Role: ${newUserModel?.role}, IsActive: ${newUserModel?.isActive}',
       );
@@ -919,17 +914,19 @@ class MyApp extends StatelessWidget {
   }
 
   ThemeData _buildThemeData() {
-    const primaryColor = Colors.teal;
-    final secondaryColor = Colors.amber[700]!;
-    const backgroundColor = Color(0xFFF8F9FA);
+    const primaryColor = Color(0xFF00796B); // A slightly deeper teal
+    const secondaryColor = Color(0xFFFFA000); // A richer amber
+    const backgroundColor = Color(0xFFF5F7FA); // A softer off-white
     const surfaceColor = Colors.white;
-    const onPrimaryColor = Colors.white;
-    const onSecondaryColor = Colors.black;
-    final onBackgroundColor = Colors.grey[850]!;
-    final onSurfaceColor = Colors.grey[850]!;
+    const textColor = Color(0xFF333333);
+    const borderColor = Color(0xFFE0E0E0);
 
-    return ThemeData(
-      useMaterial3: true,
+    final baseTheme = ThemeData.light(useMaterial3: true);
+    final textTheme = GoogleFonts.manropeTextTheme(
+      baseTheme.textTheme,
+    ).apply(bodyColor: textColor, displayColor: textColor);
+
+    return baseTheme.copyWith(
       colorScheme: ColorScheme.fromSeed(
         seedColor: primaryColor,
         brightness: Brightness.light,
@@ -937,66 +934,68 @@ class MyApp extends StatelessWidget {
         secondary: secondaryColor,
         background: backgroundColor,
         surface: surfaceColor,
-        onPrimary: onPrimaryColor,
-        onSecondary: onSecondaryColor,
-        onBackground: onBackgroundColor,
-        onSurface: onSurfaceColor,
-        error: Colors.redAccent,
+        onPrimary: Colors.white,
+        onSecondary: Colors.black,
+        onBackground: textColor,
+        onSurface: textColor,
+        error: const Color(0xFFD32F2F),
       ),
       scaffoldBackgroundColor: backgroundColor,
-      textTheme: TextTheme(
-        displayLarge: TextStyle(
-          fontSize: 32,
+      textTheme: textTheme.copyWith(
+        displayLarge: textTheme.displayLarge?.copyWith(
           fontWeight: FontWeight.bold,
           color: primaryColor,
+          fontSize: 32,
         ),
-        headlineMedium: TextStyle(
+        headlineMedium: textTheme.headlineMedium?.copyWith(
+          fontWeight: FontWeight.bold,
           fontSize: 24,
-          fontWeight: FontWeight.bold,
-          color: onSurfaceColor,
+          color: textColor.withOpacity(0.9),
         ),
-        titleLarge: TextStyle(
+        titleLarge: textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.bold,
           fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: onSurfaceColor,
         ),
-        bodyMedium: TextStyle(
+        bodyLarge: textTheme.bodyLarge?.copyWith(fontSize: 16, height: 1.5),
+        bodyMedium: textTheme.bodyMedium?.copyWith(
           fontSize: 14,
-          color: onSurfaceColor.withOpacity(0.8),
+          color: textColor.withOpacity(0.7),
           height: 1.5,
         ),
-        bodySmall: TextStyle(fontSize: 12, color: Colors.grey[600]),
-        labelLarge: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        labelLarge: textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.bold,
+          fontSize: 16,
+        ),
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: primaryColor,
-        foregroundColor: onPrimaryColor,
-        elevation: 2,
+        foregroundColor: Colors.white,
+        elevation: 1,
         centerTitle: true,
         titleTextStyle: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.bold,
-          color: onPrimaryColor,
+          color: Colors.white,
         ),
       ),
       cardTheme: CardThemeData(
-        elevation: 2,
+        elevation: 0.5,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12.0),
-          side: BorderSide(color: Colors.grey.shade200, width: 1),
+          side: const BorderSide(color: borderColor, width: 1),
         ),
-        margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+        margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 0),
         color: surfaceColor,
       ),
       inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.0),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide: const BorderSide(color: borderColor),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.0),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide: const BorderSide(color: borderColor),
         ),
         filled: true,
         fillColor: surfaceColor,
@@ -1008,29 +1007,26 @@ class MyApp extends StatelessWidget {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: primaryColor,
-          foregroundColor: onPrimaryColor,
+          foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          textStyle: textTheme.labelLarge,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8.0),
           ),
-          elevation: 2,
+          elevation: 1,
         ),
       ),
-      floatingActionButtonTheme: FloatingActionButtonThemeData(
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: secondaryColor,
-        foregroundColor: onSecondaryColor,
-        elevation: 4,
+        foregroundColor: Colors.black,
+        elevation: 2,
       ),
       dialogTheme: DialogThemeData(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(15.0),
+          borderRadius: BorderRadius.circular(16.0),
         ),
-        titleTextStyle: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: primaryColor,
-        ),
+        titleTextStyle: textTheme.headlineMedium?.copyWith(fontSize: 20),
+        backgroundColor: surfaceColor,
       ),
       listTileTheme: ListTileThemeData(
         iconColor: primaryColor,
@@ -1039,10 +1035,10 @@ class MyApp extends StatelessWidget {
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         selectedItemColor: primaryColor,
-        unselectedItemColor: Colors.grey[600],
+        unselectedItemColor: Colors.grey[500],
         selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
         backgroundColor: surfaceColor,
-        elevation: 4,
+        elevation: 2,
         type: BottomNavigationBarType.fixed,
       ),
       chipTheme: ChipThemeData(
@@ -1201,7 +1197,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
                       Icon(
-                        Icons.manage_accounts_rounded,
+                        Icons.insights_rounded,
                         size: 60,
                         color: theme.colorScheme.primary,
                       ),
@@ -1342,14 +1338,20 @@ class InfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
-      elevation: 1,
       child: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: color.withOpacity(0.15),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [color.withOpacity(0.1), color.withOpacity(0.2)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
               child: Icon(icon, size: 28, color: color),
             ),
             const SizedBox(width: 16),
@@ -1357,12 +1359,7 @@ class InfoCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  title,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[600],
-                  ),
-                ),
+                Text(title, style: theme.textTheme.bodyMedium),
                 Text(value, style: theme.textTheme.headlineMedium),
               ],
             ),
@@ -1385,7 +1382,6 @@ class _AdminHomePageState extends State<AdminHomePage> {
   int _selectedIndex = 0;
 
   final GlobalKey<_AdminDashboardScreenState> _dashboardKey = GlobalKey();
-  final GlobalKey<_EmployeeListScreenState> _employeeListKey = GlobalKey();
 
   late final List<Widget> _widgetOptions;
 
@@ -1395,8 +1391,8 @@ class _AdminHomePageState extends State<AdminHomePage> {
     _widgetOptions = <Widget>[
       AdminDashboardScreen(key: _dashboardKey),
       const ProjectListScreen(),
-      EmployeeListScreen(key: _employeeListKey),
-      const AdminReportingScreen(),
+      const EmployeeListScreen(),
+      const ReportingScreen(),
     ];
   }
 
@@ -1407,11 +1403,12 @@ class _AdminHomePageState extends State<AdminHomePage> {
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
+    final userModel = Provider.of<UserModelNotifier>(context).userModel;
     final titles = [
-      'Dashboard',
+      'Welcome, ${userModel?.name ?? 'Admin'}',
       'Manage Projects',
       'Manage Employees',
-      'Reporting',
+      'Reporting & Analytics',
     ];
     return Scaffold(
       appBar: AppBar(
@@ -1426,27 +1423,30 @@ class _AdminHomePageState extends State<AdminHomePage> {
           ),
         ],
       ),
-      body: IndexedStack(index: _selectedIndex, children: _widgetOptions),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        child: IndexedStack(index: _selectedIndex, children: _widgetOptions),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard_outlined),
-            activeIcon: Icon(Icons.dashboard),
+            activeIcon: Icon(Icons.dashboard_rounded),
             label: 'Dashboard',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.assignment_outlined),
-            activeIcon: Icon(Icons.assignment),
+            activeIcon: Icon(Icons.assignment_rounded),
             label: 'Projects',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.people_alt_outlined),
-            activeIcon: Icon(Icons.people_alt),
+            activeIcon: Icon(Icons.people_alt_rounded),
             label: 'Employees',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.analytics_outlined),
-            activeIcon: Icon(Icons.analytics),
+            icon: Icon(Icons.bar_chart_outlined),
+            activeIcon: Icon(Icons.bar_chart_rounded),
             label: 'Reporting',
           ),
         ],
@@ -1501,8 +1501,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('Could not load dashboard data. Error: ${snapshot.error}'),
-                const SizedBox(height: 10),
+                const Icon(
+                  Icons.error_outline,
+                  color: Colors.redAccent,
+                  size: 48,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Could not load dashboard data.',
+                  style: theme.textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                Text('${snapshot.error}', style: theme.textTheme.bodySmall),
+                const SizedBox(height: 20),
                 ElevatedButton.icon(
                   onPressed: refresh,
                   icon: const Icon(Icons.refresh),
@@ -1547,21 +1558,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           onRefresh: () async => refresh(),
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.only(top: 16.0, bottom: 16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Welcome, Admin!",
-                  style: theme.textTheme.displayLarge?.copyWith(
-                    fontSize: 28,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  "Here is a summary of your workspace.",
-                  style: theme.textTheme.bodyMedium,
+                  "Workspace Overview",
+                  style: theme.textTheme.headlineMedium,
                 ),
                 const SizedBox(height: 24),
                 GridView.builder(
@@ -1599,18 +1602,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               return ListTile(
                                 title: Text(
                                   entry.key,
-                                  style: theme.textTheme.bodyMedium,
+                                  style: theme.textTheme.bodyLarge,
                                 ),
                                 trailing: Text(
                                   entry.value.toString(),
-                                  style: theme.textTheme.titleLarge,
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    color: theme.colorScheme.primary,
+                                  ),
                                 ),
                               );
                             }).toList(),
                           )
                         : const Center(
                             child: Padding(
-                              padding: EdgeInsets.all(16.0),
+                              padding: EdgeInsets.all(32.0),
                               child: Text("No tasks found."),
                             ),
                           ),
@@ -1631,7 +1636,11 @@ class ProjectListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final supabaseService = Provider.of<SupabaseService>(context);
+    final userModel = Provider.of<UserModelNotifier>(context).userModel;
+    final bool isAdmin = userModel?.role == 'admin';
+
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: StreamBuilder<List<ProjectModel>>(
         stream: supabaseService.getProjects(),
         builder: (context, snapshot) {
@@ -1651,8 +1660,9 @@ class ProjectListScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final project = projects[index];
               return Card(
+                margin: const EdgeInsets.symmetric(vertical: 6),
                 child: ListTile(
-                  leading: CircleAvatar(
+                  leading: const CircleAvatar(
                     child: Icon(Icons.folder_copy_outlined, size: 20),
                   ),
                   title: Text(
@@ -1664,7 +1674,9 @@ class ProjectListScreen extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: isAdmin
+                      ? _buildAdminMenu(context, project, supabaseService)
+                      : const Icon(Icons.chevron_right),
                   onTap: () {
                     Navigator.push(
                       context,
@@ -1679,15 +1691,212 @@ class ProjectListScreen extends StatelessWidget {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'new_project_fab',
-        onPressed: () => _showCreateProjectDialog(context, supabaseService),
-        label: const Text('New Project'),
-        icon: const Icon(Icons.add),
+      floatingActionButton: isAdmin
+          ? FloatingActionButton.extended(
+              heroTag: 'new_project_fab',
+              onPressed: () =>
+                  _showCreateProjectDialog(context, supabaseService),
+              label: const Text('New Project'),
+              icon: const Icon(Icons.add),
+            )
+          : null,
+    );
+  }
+
+  // --- WIDGET BUILDER FOR THE ADMIN MENU ---
+  Widget _buildAdminMenu(
+    BuildContext context,
+    ProjectModel project,
+    SupabaseService service,
+  ) {
+    return PopupMenuButton<String>(
+      onSelected: (value) {
+        if (value == 'edit') {
+          _showEditProjectDialog(context, project, service);
+        } else if (value == 'delete') {
+          _showDeleteConfirmationDialog(context, project, service);
+        }
+      },
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+        const PopupMenuItem<String>(
+          value: 'edit',
+          child: ListTile(
+            leading: Icon(Icons.edit_outlined),
+            title: Text('Edit'),
+          ),
+        ),
+        const PopupMenuItem<String>(
+          value: 'delete',
+          child: ListTile(
+            leading: Icon(Icons.delete_outline, color: Colors.red),
+            title: Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- DIALOG FOR EDITING A PROJECT ---
+  void _showEditProjectDialog(
+    BuildContext context,
+    ProjectModel project,
+    SupabaseService service,
+  ) {
+    final formKey = GlobalKey<FormState>();
+    final nameController = TextEditingController(text: project.name);
+    final descriptionController = TextEditingController(
+      text: project.description,
+    );
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (dialogContext, setStateDialog) {
+            bool isLoading = false;
+            return AlertDialog(
+              title: const Text('Edit Project'),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Project Name',
+                      ),
+                      validator: (v) => v!.isEmpty ? 'Name is required' : null,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: descriptionController,
+                      decoration: const InputDecoration(
+                        labelText: 'Description (Optional)',
+                      ),
+                      maxLines: 3,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          if (formKey.currentState!.validate()) {
+                            setStateDialog(() => isLoading = true);
+                            try {
+                              await service.updateProject(
+                                project.id,
+                                nameController.text.trim(),
+                                descriptionController.text.trim(),
+                              );
+                              if (ctx.mounted) Navigator.of(ctx).pop();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Project updated successfully!',
+                                  ),
+                                ),
+                              );
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Error: ${e.toString().replaceFirst("Exception: ", "")}',
+                                    ),
+                                  ),
+                                );
+                              }
+                            } finally {
+                              if (dialogContext.mounted) {
+                                setStateDialog(() => isLoading = false);
+                              }
+                            }
+                          }
+                        },
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // --- DIALOG FOR DELETING A PROJECT (WITH CONFIRMATION) ---
+  void _showDeleteConfirmationDialog(
+    BuildContext context,
+    ProjectModel project,
+    SupabaseService service,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm Deletion'),
+        content: Text.rich(
+          TextSpan(
+            text: 'Are you absolutely sure you want to delete the project "',
+            children: <TextSpan>[
+              TextSpan(
+                text: project.name,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const TextSpan(
+                text:
+                    '"?\n\nThis will permanently delete all associated uploads and tasks. This action cannot be undone.',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              try {
+                Navigator.of(ctx).pop(); // Close the dialog first
+                await service.deleteProject(project.id);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Project "${project.name}" deleted.')),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Error: ${e.toString().replaceFirst("Exception: ", "")}',
+                    ),
+                  ),
+                );
+              }
+            },
+            child: const Text('DELETE'),
+          ),
+        ],
       ),
     );
   }
 
+  // --- DIALOG FOR CREATING A PROJECT (UNCHANGED, BUT KEPT FOR COMPLETENESS) ---
   void _showCreateProjectDialog(BuildContext context, SupabaseService service) {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController();
@@ -1786,6 +1995,598 @@ class ProjectListScreen extends StatelessWidget {
   }
 }
 
+class ReportingScreen extends StatefulWidget {
+  const ReportingScreen({super.key});
+
+  @override
+  State<ReportingScreen> createState() => _ReportingScreenState();
+}
+
+class _ReportingScreenState extends State<ReportingScreen> {
+  // === STATE FOR FILTERS ===
+  ProjectModel? _selectedProject;
+  UserModel? _selectedEmployee;
+  DateTime? _startDate;
+  DateTime? _endDate;
+  String? _selectedStatus;
+  final List<String> _statuses = [
+    "Not Started",
+    "In Progress",
+    "Completed",
+    "On Hold",
+    "Under Review",
+  ];
+
+  // === STATE FOR DATA AND UI ===
+  bool _isLoading = false;
+  List<Map<String, dynamic>> _reportData = [];
+  String? _errorMessage;
+
+  // NEW: State for dynamic columns
+  List<String> _allPossibleDataColumns = [];
+  Set<String> _selectedDataColumns = {};
+
+  // NEW: State for the chart
+  List<BarChartGroupData> _chartData = [];
+  late SupabaseService _supabaseService;
+  bool _isServiceInitialized = false;
+
+  // === LIFECYCLE METHODS ===
+  @override
+  void initState() {
+    super.initState();
+    // NEW: Set default date range to the current month on first load
+    _setDefaultDateRange();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_isServiceInitialized) {
+      _supabaseService = Provider.of<SupabaseService>(context, listen: false);
+      _isServiceInitialized = true;
+      // NEW: Automatically generate report on first load with default dates
+      // FIX: The callback must accept a Duration argument, which we ignore with _.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _generateReport());
+    }
+  }
+
+  // === DATA HANDLING AND PROCESSING ===
+  void _setDefaultDateRange() {
+    final now = DateTime.now();
+    _startDate = DateTime(now.year, now.month, 1);
+    _endDate = DateTime(now.year, now.month + 1, 0);
+  }
+
+  Future<void> _generateReport() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _reportData = [];
+      _chartData = [];
+      // Clear previous chart data
+      _allPossibleDataColumns = []; // Clear previous dynamic columns
+    });
+    try {
+      final data = await _supabaseService.getFilteredTaskReport(
+        startDate: _startDate,
+        endDate: _endDate,
+        projectId: _selectedProject?.id,
+        userId: _selectedEmployee?.uid,
+        status: _selectedStatus,
+      );
+      setState(() {
+        _reportData = data;
+        // NEW: Process data for charts and columns after fetching
+        _processChartData(data);
+        _discoverDataColumns(data);
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString().replaceFirst("Exception: ", "");
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  } // NEW: Processes fetched data to generate chart data
+
+  void _processChartData(List<Map<String, dynamic>> data) {
+    if (data.isEmpty) return;
+    final Map<String, int> employeeTaskCounts = {};
+    for (final row in data) {
+      final employeeName = row['employee_name'] as String? ?? 'Unassigned';
+      employeeTaskCounts[employeeName] =
+          (employeeTaskCounts[employeeName] ?? 0) + 1;
+    }
+
+    int i = 0;
+    _chartData = employeeTaskCounts.entries.map((entry) {
+      return BarChartGroupData(
+        x: i++,
+        barRods: [
+          BarChartRodData(
+            toY: entry.value.toDouble(),
+            color: Colors.teal,
+            width: 16,
+          ),
+        ],
+        showingTooltipIndicators: [0],
+      );
+    }).toList();
+  }
+
+  // NEW: Discovers all possible dynamic columns from the 'task_data' field
+  void _discoverDataColumns(List<Map<String, dynamic>> data) {
+    if (data.isEmpty) return;
+    final Set<String> columns = {};
+    for (final row in data) {
+      final taskData = row['task_data'] as Map<String, dynamic>? ?? {};
+      columns.addAll(taskData.keys);
+    }
+    setState(() {
+      _allPossibleDataColumns = columns.toList()..sort();
+    });
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _selectedProject = null;
+      _selectedEmployee = null;
+      _startDate = null;
+      _endDate = null;
+      _selectedStatus = null;
+      _reportData = [];
+      _chartData = [];
+      _allPossibleDataColumns = [];
+      _selectedDataColumns = {};
+      _errorMessage = null;
+    });
+  }
+
+  // === UI HELPER METHODS ===
+  Future<void> _selectDateRange(BuildContext context) async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDateRange: _startDate != null && _endDate != null
+          ? DateTimeRange(start: _startDate!, end: _endDate!)
+          : null,
+    );
+    if (picked != null) {
+      setState(() {
+        _startDate = picked.start;
+        _endDate = picked.end;
+      });
+    }
+  }
+
+  // NEW: Shows a dialog to let the user select which extra columns to display
+  Future<void> _showColumnSelectionDialog() async {
+    final Set<String> tempSelected = Set<String>.from(_selectedDataColumns);
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Select Data Columns'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: _allPossibleDataColumns.map((col) {
+                    return CheckboxListTile(
+                      title: Text(col),
+                      value: tempSelected.contains(col),
+                      onChanged: (isSelected) {
+                        setStateDialog(() {
+                          if (isSelected == true) {
+                            tempSelected.add(col);
+                          } else {
+                            tempSelected.remove(col);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _selectedDataColumns = tempSelected;
+                    });
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('Confirm'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _exportToCsv() async {
+    // ... (This method remains unchanged) ...
+    if (_reportData.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("No data to export.")));
+      return;
+    }
+    final List<Map<String, dynamic>> flattenedData = _reportData.map((row) {
+      final Map<String, dynamic> flatRow = {};
+      row.forEach((key, value) {
+        if (key == 'task_data' && value is Map) {
+          (value as Map).forEach((taskKey, taskValue) {
+            flatRow[taskKey] = taskValue;
+          });
+        } else {
+          flatRow[key] = value;
+        }
+      });
+      return flatRow;
+    }).toList();
+    final Set<String> headerSet = {};
+    for (var row in flattenedData) {
+      headerSet.addAll(row.keys);
+    }
+    final List<String> orderedHeaders =
+        [
+          'task_id',
+          'project_name',
+          'file_name',
+          'employee_name',
+          'status',
+          'completed_at',
+          'employee_remarks',
+        ]..addAll(
+          headerSet.where(
+            (h) => ![
+              'task_id',
+              'project_name',
+              'file_name',
+              'employee_name',
+              'status',
+              'completed_at',
+              'employee_remarks',
+            ].contains(h),
+          ),
+        );
+
+    List<List<dynamic>> csvData = [orderedHeaders];
+
+    for (var row in flattenedData) {
+      csvData.add(orderedHeaders.map((header) => row[header]).toList());
+    }
+
+    String csv = const ListToCsvConverter().convert(csvData);
+    final Uint8List bytes = Uint8List.fromList(csv.codeUnits);
+    final String fileName =
+        "report_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.csv";
+
+    await FileSaver.instance.saveFile(
+      name: fileName,
+      bytes: bytes,
+      fileExtension: 'csv',
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Report '$fileName' saved successfully!")),
+    );
+  } // === MAIN BUILD METHOD ===
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(vertical: 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // --- FILTERS ---
+            _buildFiltersSection(), const SizedBox(height: 16),
+            // --- ACTION BUTTONS ---
+            _buildActionButtons(theme),
+            const Divider(height: 32),
+
+            // --- RESULTS (CHARTS AND TABLE) ---
+            _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _buildResultsView(),
+          ],
+        ),
+      ),
+    );
+  } // === WIDGET BUILDER METHODS ===
+
+  Widget _buildFiltersSection() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 16,
+        alignment: WrapAlignment.start,
+        children: [
+          // ... (Dropdown filters remain the same) ...
+          StreamBuilder<List<ProjectModel>>(
+            stream: _supabaseService.getProjects(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                );
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Text('No projects found.');
+              }
+              return DropdownButtonFormField<ProjectModel>(
+                value: _selectedProject,
+                hint: const Text('All Projects'),
+                items: snapshot.data!
+                    .map((p) => DropdownMenuItem(value: p, child: Text(p.name)))
+                    .toList(),
+                onChanged: (val) => setState(() => _selectedProject = val),
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+              );
+            },
+          ),
+          StreamBuilder<List<UserModel>>(
+            stream: _supabaseService.getEmployees(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                );
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Text('No employees found.');
+              }
+              return DropdownButtonFormField<UserModel>(
+                value: _selectedEmployee,
+                hint: const Text('All Employees'),
+                items: snapshot.data!
+                    .map((e) => DropdownMenuItem(value: e, child: Text(e.name)))
+                    .toList(),
+                onChanged: (val) => setState(() => _selectedEmployee = val),
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+              );
+            },
+          ),
+          DropdownButtonFormField<String>(
+            value: _selectedStatus,
+            hint: const Text('All Statuses'),
+            items: _statuses
+                .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                .toList(),
+            onChanged: (val) => setState(() => _selectedStatus = val),
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+          ),
+          InputChip(
+            avatar: const Icon(Icons.calendar_today),
+            label: Text(
+              _startDate != null && _endDate != null
+                  ? '${DateFormat.yMd().format(_startDate!)} - ${DateFormat.yMd().format(_endDate!)}'
+                  : 'Select Date Range',
+            ),
+            onPressed: () => _selectDateRange(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButtons(ThemeData theme) {
+    return Row(
+      children: [
+        ElevatedButton.icon(
+          onPressed: _generateReport,
+          icon: const Icon(Icons.search),
+          label: const Text('Generate Report'),
+        ),
+        const SizedBox(width: 10),
+        TextButton(
+          onPressed: _clearFilters,
+          child: const Text('Clear Filters'),
+        ),
+        const Spacer(),
+        if (_reportData.isNotEmpty) ...[
+          // NEW: Button to select which data columns to show
+          TextButton.icon(
+            onPressed: _allPossibleDataColumns.isNotEmpty
+                ? _showColumnSelectionDialog
+                : null,
+            icon: const Icon(Icons.view_column_outlined),
+            label: const Text('Columns'),
+          ),
+          const SizedBox(width: 10),
+          ElevatedButton.icon(
+            onPressed: _exportToCsv,
+            icon: const Icon(Icons.download),
+            label: const Text('Export CSV'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.colorScheme.secondary,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildResultsView() {
+    if (_errorMessage != null) {
+      return Center(
+        child: Text(
+          'Error: $_errorMessage',
+          style: const TextStyle(color: Colors.red),
+        ),
+      );
+    }
+    if (_reportData.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 32.0),
+          child: Text(
+            'No data found for the selected filters. Please generate a report.',
+          ),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // --- CHART SECTION ---
+        Text(
+          'Tasks per Employee',
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 250,
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: BarChart(BarChartData(barGroups: _chartData)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 32),
+        // --- DATA TABLE / LIST VIEW SECTION ---
+        Text(
+          'Detailed Report',
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 16),
+        // NEW: Responsive layout for the data display
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 800) {
+              return _buildMobileListView();
+            } else {
+              return _buildDesktopDataTable();
+            }
+          },
+        ),
+      ],
+    );
+  } // NEW: Refactored mobile view
+
+  Widget _buildMobileListView() {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _reportData.length,
+      itemBuilder: (context, index) {
+        final row = _reportData[index];
+        final taskData = row['task_data'] as Map<String, dynamic>? ?? {};
+        final title =
+            taskData['Task Name'] ??
+            taskData['task_name'] ??
+            taskData.values.first?.toString() ??
+            'Untitled';
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 6),
+          child: ListTile(
+            title: Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("Employee: ${row['employee_name'] ?? 'N/A'}"),
+                Text("Project: ${row['project_name'] ?? 'N/A'}"),
+                Text("Status: ${row['status'] ?? 'N/A'}"),
+                if (row['completed_at'] != null)
+                  Text(
+                    "Completed: ${DateFormat.yMd().format(DateTime.parse(row['completed_at']))}",
+                  ),
+              ],
+            ),
+            isThreeLine: true,
+          ),
+        );
+      },
+    );
+  }
+
+  // NEW: Desktop data table view
+  Widget _buildDesktopDataTable() {
+    final List<String> fixedHeaders = [
+      'Project',
+      'Employee',
+      'Status',
+      'Completed',
+    ];
+    final List<String> dynamicHeaders = _selectedDataColumns.toList()..sort();
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns: [
+            ...fixedHeaders.map(
+              (h) => DataColumn(
+                label: Text(
+                  h,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            ...dynamicHeaders.map(
+              (h) => DataColumn(
+                label: Text(
+                  h,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+          rows: _reportData.map((row) {
+            final taskData = row['task_data'] as Map<String, dynamic>? ?? {};
+            return DataRow(
+              cells: [
+                DataCell(Text(row['project_name']?.toString() ?? '')),
+                DataCell(Text(row['employee_name']?.toString() ?? '')),
+                DataCell(Text(row['status']?.toString() ?? '')),
+                DataCell(
+                  Text(
+                    row['completed_at'] != null
+                        ? DateFormat.yMd().format(
+                            DateTime.parse(row['completed_at']),
+                          )
+                        : '',
+                  ),
+                ),
+                ...dynamicHeaders.map(
+                  (col) => DataCell(Text(taskData[col]?.toString() ?? '')),
+                ),
+              ],
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+}
+
 class EmployeeListScreen extends StatefulWidget {
   const EmployeeListScreen({super.key});
 
@@ -1800,6 +2601,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     final authService = Provider.of<AuthService>(context, listen: false);
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: StreamBuilder<List<UserModel>>(
         stream: supabaseService.getEmployees(),
         builder: (context, snapshot) {
@@ -1819,6 +2621,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
             itemBuilder: (context, index) {
               final employee = employees[index];
               return Card(
+                margin: const EdgeInsets.symmetric(vertical: 6),
                 child: ListTile(
                   leading: CircleAvatar(
                     child: Text(
@@ -1840,9 +2643,9 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
                             style: TextStyle(color: Colors.red),
                           ),
                         )
-                      : const Text(
-                          'Deactivated',
-                          style: TextStyle(color: Colors.grey),
+                      : const Chip(
+                          label: Text('Deactivated'),
+                          padding: EdgeInsets.zero,
                         ),
                 ),
               );
@@ -2078,534 +2881,6 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
   }
 }
 
-class AdminReportingScreen extends StatefulWidget {
-  const AdminReportingScreen({super.key});
-
-  @override
-  State<AdminReportingScreen> createState() => _AdminReportingScreenState();
-}
-
-class _AdminReportingScreenState extends State<AdminReportingScreen>
-    with TickerProviderStateMixin {
-  late TabController _tabController;
-  DateTimeRange _dateRange = DateTimeRange(
-    start: DateTime.now().subtract(const Duration(days: 30)),
-    end: DateTime.now(),
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 4, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _selectDateRange() async {
-    final newDateRange = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      initialDateRange: _dateRange,
-    );
-    if (newDateRange != null) {
-      setState(() {
-        _dateRange = newDateRange;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        children: [
-          _buildDateRangeSelector(),
-          TabBar(
-            controller: _tabController,
-            labelColor: Theme.of(context).colorScheme.primary,
-            unselectedLabelColor: Colors.grey[600],
-            tabs: const [
-              Tab(icon: Icon(Icons.dashboard), text: 'Overview'),
-              Tab(icon: Icon(Icons.folder_copy), text: 'Projects'),
-              Tab(icon: Icon(Icons.person), text: 'Employees'),
-              Tab(icon: Icon(Icons.table_chart), text: 'Data Export'),
-            ],
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                ReportOverviewTab(
-                  dateRange: _dateRange,
-                  key: ValueKey(_dateRange),
-                ),
-                ProjectReportsTab(
-                  dateRange: _dateRange,
-                  key: ValueKey(_dateRange),
-                ),
-                EmployeePerformanceTab(
-                  dateRange: _dateRange,
-                  key: ValueKey(_dateRange),
-                ),
-                DataExportTab(dateRange: _dateRange, key: ValueKey(_dateRange)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDateRangeSelector() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      color: Theme.of(context).colorScheme.surface,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text('Report for:', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(width: 10),
-          ActionChip(
-            avatar: const Icon(Icons.calendar_today, size: 16),
-            label: Text(
-              '${DateFormat.yMd().format(_dateRange.start)} - ${DateFormat.yMd().format(_dateRange.end)}',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            onPressed: _selectDateRange,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// --- Tab 1: Overview ---
-class ReportOverviewTab extends StatelessWidget {
-  final DateTimeRange dateRange;
-
-  const ReportOverviewTab({super.key, required this.dateRange});
-
-  @override
-  Widget build(BuildContext context) {
-    final supabaseService = Provider.of<SupabaseService>(
-      context,
-      listen: false,
-    );
-
-    return FutureBuilder<Map<String, dynamic>>(
-      future: supabaseService.getReportOverview(dateRange),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text("Error: ${snapshot.error}"));
-        }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Center(child: Text("No data for this period."));
-        }
-
-        final overview = snapshot.data!;
-
-        // Safe Casting
-        final kpis = overview['kpis'] is Map
-            ? Map<String, dynamic>.from(overview['kpis'])
-            : <String, dynamic>{};
-        final pieData = overview['pie_chart_data'] is Map
-            ? Map<String, dynamic>.from(overview['pie_chart_data'])
-            : <String, dynamic>{};
-
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Key Metrics",
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 16),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                childAspectRatio: 2.5,
-                children: [
-                  InfoCard(
-                    title: "Tasks Completed",
-                    value: kpis['tasks_completed']?.toInt().toString() ?? '0',
-                    icon: Icons.check,
-                    color: Colors.green,
-                  ),
-                  InfoCard(
-                    title: "Tasks In Progress",
-                    value: kpis['tasks_in_progress']?.toInt().toString() ?? '0',
-                    icon: Icons.construction,
-                    color: Colors.blue,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              Text(
-                "Task Status Breakdown",
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 16),
-              SizedBox(height: 250, child: _buildPieChart(pieData)),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildPieChart(Map<String, dynamic> data) {
-    final List<PieChartSectionData> sections = [];
-    final colors = {
-      'Not Started': Colors.orange[400]!,
-      'In Progress': Colors.blue[400]!,
-      'Completed': Colors.green[400]!,
-      'On Hold': Colors.purple[400]!,
-      'Under Review': Colors.yellow[700]!,
-    };
-    final total = data.values.fold(0.0, (sum, item) => sum + item);
-
-    if (total == 0) return const Center(child: Text("No task data."));
-
-    data.forEach((status, value) {
-      sections.add(
-        PieChartSectionData(
-          color: colors[status] ?? Colors.grey,
-          value: value.toDouble(),
-          title: '${(value / total * 100).toStringAsFixed(0)}%',
-          radius: 80,
-          titleStyle: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-      );
-    });
-
-    return PieChart(PieChartData(sections: sections, centerSpaceRadius: 40));
-  }
-}
-
-// --- Tab 2: Project Reports ---
-class ProjectReportsTab extends StatelessWidget {
-  final DateTimeRange dateRange;
-
-  const ProjectReportsTab({super.key, required this.dateRange});
-
-  @override
-  Widget build(BuildContext context) {
-    final supabaseService = Provider.of<SupabaseService>(
-      context,
-      listen: false,
-    );
-
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: supabaseService.getProjectSummaries(dateRange),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text("Error: ${snapshot.error}"));
-        }
-        final projects = snapshot.data ?? [];
-        if (projects.isEmpty) {
-          return const Center(child: Text("No project data for this period."));
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(8),
-          itemCount: projects.length,
-          itemBuilder: (context, index) {
-            final project = projects[index];
-            final total = (project['total_tasks'] as int?) ?? 0;
-            final completed = (project['completed_tasks'] as int?) ?? 0;
-            final progress = total > 0 ? completed / total : 0.0;
-
-            return Card(
-              child: ListTile(
-                title: Text(
-                  project['project_name'],
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      LinearProgressIndicator(value: progress, minHeight: 6),
-                      const SizedBox(height: 4),
-                      Text("$completed of $total tasks completed"),
-                    ],
-                  ),
-                ),
-                trailing: Text(
-                  "${(progress * 100).toStringAsFixed(0)}%",
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-// --- Tab 3: Employee Performance ---
-class EmployeePerformanceTab extends StatelessWidget {
-  final DateTimeRange dateRange;
-
-  const EmployeePerformanceTab({super.key, required this.dateRange});
-
-  @override
-  Widget build(BuildContext context) {
-    final supabaseService = Provider.of<SupabaseService>(
-      context,
-      listen: false,
-    );
-
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: supabaseService.getEmployeePerformance(dateRange),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text("Error: ${snapshot.error}"));
-        }
-        final employees = snapshot.data ?? [];
-        if (employees.isEmpty) {
-          return const Center(child: Text("No employee data for this period."));
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(8),
-          itemCount: employees.length,
-          itemBuilder: (context, index) {
-            final employee = employees[index];
-            final assigned = (employee['assigned_tasks'] as int?) ?? 0;
-            final completed = (employee['completed_tasks'] as int?) ?? 0;
-            final rate = assigned > 0 ? (completed / assigned * 100) : 0;
-
-            return Card(
-              child: ListTile(
-                leading: CircleAvatar(
-                  child: Text(employee['employee_name'][0]),
-                ),
-                title: Text(
-                  employee['employee_name'],
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                subtitle: Text("Completed: $completed | Assigned: $assigned"),
-                trailing: Text(
-                  "${rate.toStringAsFixed(0)}% Done",
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-// --- Tab 4: Data Export ---
-class DataExportTab extends StatefulWidget {
-  final DateTimeRange dateRange;
-
-  const DataExportTab({super.key, required this.dateRange});
-
-  @override
-  _DataExportTabState createState() => _DataExportTabState();
-}
-
-class _DataExportTabState extends State<DataExportTab> {
-  late Future<List<Map<String, dynamic>>> _reportDataFuture;
-  List<Map<String, dynamic>> _sourceData = [];
-  List<Map<String, dynamic>> _filteredData = [];
-  ReportDataSource? _dataSource;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-  }
-
-  @override
-  void didUpdateWidget(covariant DataExportTab oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.dateRange != oldWidget.dateRange) {
-      _loadData();
-    }
-  }
-
-  void _loadData() {
-    final supabaseService = Provider.of<SupabaseService>(
-      context,
-      listen: false,
-    );
-    _reportDataFuture = supabaseService.getFullReportData().then((data) {
-      if (mounted) {
-        setState(() {
-          _sourceData = data;
-          _applyFilters();
-        });
-      }
-      return data;
-    });
-  }
-
-  void _applyFilters() {
-    _filteredData = _sourceData.where((row) {
-      final createdAt = DateTime.tryParse(row['created_at'] ?? '');
-      if (createdAt == null) return false;
-      return createdAt.isAfter(widget.dateRange.start) &&
-          createdAt.isBefore(widget.dateRange.end);
-    }).toList();
-    setState(() {
-      _dataSource = ReportDataSource(_filteredData);
-    });
-  }
-
-  void _exportToCsv() async {
-    if (_filteredData.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("No data to export.")));
-      return;
-    }
-
-    List<List<dynamic>> rows = [];
-    if (_filteredData.isNotEmpty) {
-      rows.add(_filteredData.first.keys.toList());
-      for (var row in _filteredData) {
-        rows.add(row.values.toList());
-      }
-    }
-
-    String csv = const ListToCsvConverter().convert(rows);
-
-    logger.i("----- CSV DATA -----\n$csv\n----- END CSV DATA -----");
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("CSV data printed to console for demonstration."),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton.icon(
-              onPressed: _exportToCsv,
-              icon: const Icon(Icons.download),
-              label: const Text("Export as CSV"),
-            ),
-          ),
-        ),
-        Expanded(
-          child: FutureBuilder(
-            future: _reportDataFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting &&
-                  _sourceData.isEmpty) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return Center(child: Text("Error: ${snapshot.error}"));
-              }
-              if (_dataSource == null || _filteredData.isEmpty) {
-                return const Center(child: Text("No data for this period."));
-              }
-              return SfDataGrid(
-                source: _dataSource!,
-                columns: _dataSource!.getColumns(),
-                columnWidthMode: ColumnWidthMode.auto,
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class ReportDataSource extends DataGridSource {
-  List<Map<String, dynamic>> _reportData = [];
-  List<DataGridRow> _rows = [];
-
-  ReportDataSource(List<Map<String, dynamic>> reportData) {
-    _reportData = reportData;
-    _buildDataGridRows();
-  }
-
-  @override
-  List<DataGridRow> get rows => _rows;
-
-  void _buildDataGridRows() {
-    _rows = _reportData.map<DataGridRow>((row) {
-      return DataGridRow(
-        cells: row.entries.map((entry) {
-          return DataGridCell(columnName: entry.key, value: entry.value);
-        }).toList(),
-      );
-    }).toList();
-  }
-
-  @override
-  DataGridRowAdapter buildRow(DataGridRow row) {
-    return DataGridRowAdapter(
-      cells: row.getCells().map<Widget>((cell) {
-        return Container(
-          padding: const EdgeInsets.all(8.0),
-          alignment: Alignment.centerLeft,
-          child: Text(cell.value?.toString() ?? ''),
-        );
-      }).toList(),
-    );
-  }
-
-  List<GridColumn> getColumns() {
-    if (_reportData.isEmpty) return [];
-
-    return _reportData.first.keys.map((key) {
-      return GridColumn(
-        columnName: key,
-        label: Container(
-          padding: const EdgeInsets.all(8.0),
-          alignment: Alignment.centerLeft,
-          child: Text(
-            key.replaceAll('_', ' ').capitalizeFirst(),
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ),
-      );
-    }).toList();
-  }
-}
-
 // ======== EMPLOYEE SCREENS ========
 class EmployeeHomePage extends StatefulWidget {
   const EmployeeHomePage({super.key});
@@ -2656,7 +2931,10 @@ class _EmployeeHomePageState extends State<EmployeeHomePage> {
           ),
         ],
       ),
-      body: IndexedStack(index: _selectedIndex, children: _widgetOptions),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        child: IndexedStack(index: _selectedIndex, children: _widgetOptions),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(
@@ -2759,12 +3037,12 @@ class EmployeeProjectsScreen extends StatelessWidget {
           );
         }
         return ListView.builder(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: projects.length,
           itemBuilder: (context, index) {
             final project = projects[index];
             return Card(
-              margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+              margin: const EdgeInsets.symmetric(vertical: 8),
               child: ExpansionTile(
                 leading: const Icon(Icons.folder_shared_outlined),
                 title: Text(
@@ -3035,7 +3313,6 @@ class _StatusDropdownEditorState extends State<StatusDropdownEditor> {
   }
 }
 
-// ======== PASTE THIS ENTIRE CLASS OVER THE OLD TaskDataSource ========
 class TaskDataSource extends DataGridSource {
   List<Map<String, dynamic>> tasks = [];
   List<UserModel> employees = [];
@@ -3076,7 +3353,7 @@ class TaskDataSource extends DataGridSource {
   }
 
   void updateCurrentUserRole(RoleModel? roleModel) {
-    if (currentUserRoleModel?.uid != roleModel?.uid) {
+    if (currentUserRoleModel != roleModel) {
       currentUserRoleModel = roleModel;
       if (rows.isNotEmpty) _buildDataGridRows();
       notifyListeners();
@@ -3088,8 +3365,6 @@ class TaskDataSource extends DataGridSource {
       _dataColumnNames = [];
       return;
     }
-    // This robustly discovers all possible column names from all tasks
-    // while preserving the original insertion order.
     final orderedKeys = <String>[];
     final seenKeys = <String>{}; // Use a Set for fast lookups
 
@@ -3331,7 +3606,7 @@ class TaskDataSource extends DataGridSource {
           } else {
             final employee = employees.firstWhere(
               (e) => e.uid == cellValue,
-              orElse: () => UserModel(
+              orElse: () => const UserModel(
                 uid: '',
                 name: 'Unassigned',
                 email: '',
@@ -3384,24 +3659,25 @@ class ProjectDetailScreen extends StatelessWidget {
             ],
           ),
         ),
-        body: TabBarView(
-          children: [
-            UploadListScreen(project: project),
-            ProjectSummaryScreen(project: project),
-          ],
+        body: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: TabBarView(
+            children: [
+              UploadListScreen(project: project),
+              ProjectSummaryScreen(project: project),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// ======== PASTE THIS ENTIRE WIDGET OVER THE OLD UploadListScreen ========
 class UploadListScreen extends StatelessWidget {
   final ProjectModel project;
 
   const UploadListScreen({super.key, required this.project});
 
-  // THE DEFINITIVE FIX IS IN THIS METHOD
   Future<void> _pickAndUploadExcel(
     BuildContext context,
     SupabaseService supabaseService,
@@ -3568,6 +3844,7 @@ class UploadListScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final supabaseService = Provider.of<SupabaseService>(context);
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: StreamBuilder<List<UploadModel>>(
         stream: supabaseService.getUploadsForProject(project.id),
         builder: (context, snapshot) {
@@ -3595,13 +3872,12 @@ class UploadListScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final upload = uploads[index];
               return Card(
+                margin: const EdgeInsets.symmetric(vertical: 6),
                 child: ListTile(
                   leading: const Icon(Icons.file_present_rounded, size: 30),
                   title: Text(
                     upload.fileName,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleLarge?.copyWith(fontSize: 16),
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
                   subtitle: Text(
                     'Uploaded: ${DateFormat.yMMMd().add_jm().format(upload.createdAt.toLocal())}',
@@ -3646,6 +3922,7 @@ class ProjectSummaryScreen extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: FutureBuilder<Map<String, int>>(
         future: supabaseService.getTaskSummaryForProject(project.id),
         builder: (context, snapshot) {
@@ -3714,7 +3991,7 @@ class ProjectSummaryScreen extends StatelessWidget {
           }
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -3924,10 +4201,9 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    context.watch<SupabaseService>();
-
     _currentUserModel = context.watch<UserModelNotifier>().userModel;
-    if (_currentUserModel != null) {
+    if (_currentUserModel != null &&
+        _currentUserRoleModel?.uid != _currentUserModel!.uid) {
       _currentUserRoleModel = RoleModel(
         uid: _currentUserModel!.uid,
         role: _currentUserModel!.role,
@@ -3974,7 +4250,12 @@ class _TaskListScreenState extends State<TaskListScreen> {
           }
 
           final tasksToShow = snapshot.data ?? [];
-          _taskDataSource.updateTasks(tasksToShow);
+          if (!const DeepCollectionEquality().equals(
+            _taskDataSource.tasks.map((t) => t['id']).toList(),
+            tasksToShow.map((t) => t['id']).toList(),
+          )) {
+            _taskDataSource.updateTasks(tasksToShow);
+          }
 
           if (tasksToShow.isEmpty &&
               snapshot.connectionState == ConnectionState.active) {
@@ -3988,13 +4269,18 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
           return ResponsiveLayout(
             mobileBody: ListView.builder(
-              padding: const EdgeInsets.only(top: 8, bottom: 8),
+              padding: const EdgeInsets.only(
+                top: 8,
+                bottom: 8,
+                left: 16,
+                right: 16,
+              ),
               itemCount: tasksToShow.length,
               itemBuilder: (context, index) {
                 final task = tasksToShow[index];
                 final employee = _employees.firstWhere(
                   (e) => e.uid == task['assignedTo'],
-                  orElse: () => UserModel(
+                  orElse: () => const UserModel(
                     uid: '',
                     email: '',
                     name: 'Unassigned',
@@ -4004,6 +4290,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
                 );
                 return TaskCard(
                   task: task,
+                  project: widget.project,
                   assignedEmployee: employee,
                   onTap: () {
                     Navigator.push(
@@ -4042,6 +4329,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
 class TaskCard extends StatelessWidget {
   final Map<String, dynamic> task;
   final UserModel? assignedEmployee;
+  final ProjectModel? project;
   final VoidCallback onTap;
 
   const TaskCard({
@@ -4049,7 +4337,25 @@ class TaskCard extends StatelessWidget {
     required this.task,
     required this.onTap,
     this.assignedEmployee,
+    this.project,
   }) : super(key: key);
+
+  Widget _buildInfoRow(BuildContext context, IconData icon, String text) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.grey[600]),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: theme.textTheme.bodyMedium,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -4088,6 +4394,7 @@ class TaskCard extends StatelessWidget {
         'Untitled Task';
 
     return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12.0),
@@ -4123,26 +4430,14 @@ class TaskCard extends StatelessWidget {
               const SizedBox(height: 12),
               const Divider(),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.person_outline_rounded,
-                    size: 18,
-                    color: Colors.grey,
-                  ),
-                  const SizedBox(width: 8),
-                  Text('Assigned to:', style: theme.textTheme.bodySmall),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      assignedEmployee?.name ?? 'Unassigned',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
+              if (project != null) ...[
+                _buildInfoRow(context, Icons.folder_open, project!.name),
+                const SizedBox(height: 8),
+              ],
+              _buildInfoRow(
+                context,
+                Icons.person_outline,
+                assignedEmployee?.name ?? 'Unassigned',
               ),
             ],
           ),

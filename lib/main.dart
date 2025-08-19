@@ -32,6 +32,150 @@ final logger = Logger(
   ),
 );
 
+// ======== THEME DEFINITION (CENTRALIZED) ========
+class AppTheme {
+  static ThemeData build() {
+    const primaryColor = Color(0xFF00796B); // A slightly deeper teal
+    const secondaryColor = Color(0xFFFFA000); // A richer amber
+    const backgroundColor = Color(0xFFF5F7FA); // A softer off-white
+    const surfaceColor = Colors.white;
+    const textColor = Color(0xFF333333);
+    const borderColor = Color(0xFFE0E0E0);
+
+    final baseTheme = ThemeData.light(useMaterial3: true);
+    final textTheme = GoogleFonts.manropeTextTheme(
+      baseTheme.textTheme,
+    ).apply(bodyColor: textColor, displayColor: textColor);
+
+    return baseTheme.copyWith(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: primaryColor,
+        brightness: Brightness.light,
+        primary: primaryColor,
+        secondary: secondaryColor,
+        background: backgroundColor,
+        surface: surfaceColor,
+        onPrimary: Colors.white,
+        onSecondary: Colors.black,
+        onBackground: textColor,
+        onSurface: textColor,
+        error: const Color(0xFFD32F2F),
+      ),
+      scaffoldBackgroundColor: backgroundColor,
+      textTheme: textTheme.copyWith(
+        displayLarge: textTheme.displayLarge?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: primaryColor,
+          fontSize: 32,
+        ),
+        headlineMedium: textTheme.headlineMedium?.copyWith(
+          fontWeight: FontWeight.bold,
+          fontSize: 24,
+          color: textColor.withOpacity(0.9),
+        ),
+        titleLarge: textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.bold,
+          fontSize: 18,
+        ),
+        bodyLarge: textTheme.bodyLarge?.copyWith(fontSize: 16, height: 1.5),
+        bodyMedium: textTheme.bodyMedium?.copyWith(
+          fontSize: 14,
+          color: textColor.withOpacity(0.7),
+          height: 1.5,
+        ),
+        labelLarge: textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.bold,
+          fontSize: 16,
+        ),
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 1,
+        centerTitle: true,
+        titleTextStyle: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      ),
+      cardTheme: CardThemeData(
+        elevation: 0.5,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12.0),
+          side: const BorderSide(color: borderColor, width: 1),
+        ),
+        margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 0),
+        color: surfaceColor,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8.0),
+          borderSide: const BorderSide(color: borderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8.0),
+          borderSide: const BorderSide(color: borderColor),
+        ),
+        filled: true,
+        fillColor: surfaceColor,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryColor,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          textStyle: textTheme.labelLarge,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8.0),
+          ),
+          elevation: 1,
+        ),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: secondaryColor,
+        foregroundColor: Colors.black,
+        elevation: 2,
+      ),
+      dialogTheme: DialogThemeData(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16.0),
+        ),
+        titleTextStyle: textTheme.headlineMedium?.copyWith(fontSize: 20),
+        backgroundColor: surfaceColor,
+      ),
+      listTileTheme: ListTileThemeData(
+        iconColor: primaryColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        selectedItemColor: primaryColor,
+        unselectedItemColor: Colors.grey[500],
+        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
+        backgroundColor: surfaceColor,
+        elevation: 2,
+        type: BottomNavigationBarType.fixed,
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: primaryColor.withOpacity(0.1),
+        labelStyle: TextStyle(
+          color: primaryColor,
+          fontWeight: FontWeight.bold,
+          fontSize: 12,
+        ),
+        side: BorderSide.none,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      ),
+    );
+  }
+}
+
 // ======== HELPER EXTENSIONS & CLASSES ========
 extension StringExtensions on String {
   String capitalizeFirst() {
@@ -378,6 +522,24 @@ class AuthService with ChangeNotifier {
     await _supabase.auth.signOut();
     notifyListeners();
   }
+
+  Future<void> resetPassword(String email) async {
+    logger.i('Attempting to reset password for: $email');
+    try {
+      await _supabase.auth.resetPasswordForEmail(email);
+      logger.i('Password reset email sent to: $email');
+    } on AuthException catch (e, st) {
+      logger.e('AuthException during password reset', error: e, stackTrace: st);
+      throw Exception(e.message);
+    } catch (e, st) {
+      logger.e(
+        'General exception during password reset',
+        error: e,
+        stackTrace: st,
+      );
+      rethrow;
+    }
+  }
 }
 
 class SupabaseService with ChangeNotifier {
@@ -426,7 +588,7 @@ class SupabaseService with ChangeNotifier {
   }
 
   Stream<List<UserModel>> getEmployees() {
-    logger.d('Setting up stream for employees.');
+    logger.d('Setting up stream for all employees.');
     return _supabase
         .from('users')
         .stream(primaryKey: ['uid'])
@@ -449,11 +611,15 @@ class SupabaseService with ChangeNotifier {
   }
 
   Stream<List<ProjectModel>> getProjects() {
-    logger.d('Setting up stream for projects.');
-    return _supabase.from('projects').stream(primaryKey: ['id']).map((maps) {
-      logger.v('Received new data from projects stream.');
-      return maps.map((map) => ProjectModel.fromMap(map)).toList();
-    });
+    logger.d('Setting up stream for all projects.');
+    return _supabase
+        .from('projects')
+        .stream(primaryKey: ['id'])
+        .order('name', ascending: true) // Added ordering for consistency
+        .map((maps) {
+          logger.v('Received new data from projects stream.');
+          return maps.map((map) => ProjectModel.fromMap(map)).toList();
+        });
   }
 
   Stream<List<UploadModel>> getUploadsForProject(String projectId) {
@@ -806,41 +972,107 @@ class SupabaseService with ChangeNotifier {
     String name,
     String description,
   ) async {
-    logger.i('Updating project: $projectId with name: $name');
+    // Log the intention to update for clear debugging trails.
+    logger.i('Attempting to update project: $projectId with name: $name');
+
     try {
+      // 1. Perform the database query and wait for it to complete.
+      // The .select() is added to ensure the query returns a result,
+      // which helps in verifying the operation's success.
       await _supabase
           .from('projects')
           .update({'name': name, 'description': description})
-          .eq('id', projectId);
-      logger.i('Project "$name" updated successfully.');
-      notifyListeners();
-    } on PostgrestException catch (e) {
-      if (e.code == '23505') {
-        throw Exception('A project with this name already exists.');
-      }
-      throw Exception('Database Error: ${e.message}');
-    } catch (e, st) {
-      logger.e('Error updating project: $name', error: e, stackTrace: st);
-      throw Exception('Failed to update project.');
-    }
-  }
+          .eq('id', projectId)
+          .select(); // Ensures the update is fully processed.
 
-  Future<void> deleteProject(String projectId) async {
-    logger.w('Attempting to delete project: $projectId');
-    try {
-      await _supabase.from('projects').delete().eq('id', projectId);
-      logger.i('Project $projectId deleted successfully.');
+      // 2. Log the successful outcome.
+      logger.i(
+        'Project "$name" (ID: $projectId) updated successfully in the database.',
+      );
+
+      // 3. Signal to the UI to rebuild. This is the key to an instant refresh.
+      // Any widget listening with a `Consumer` will now refetch its data.
       notifyListeners();
     } on PostgrestException catch (e, st) {
+      // --- Specific Error Handling for Database Issues ---
       logger.e(
-        'Database error deleting project: $projectId',
+        'A database error occurred while updating project: $projectId',
         error: e,
         stackTrace: st,
       );
-      throw Exception('Database Error: ${e.message}');
+
+      // Check for a unique constraint violation (e.g., duplicate project name).
+      if (e.code == '23505') {
+        throw Exception(
+          'A project with this name already exists. Please choose a different name.',
+        );
+      }
+
+      // For any other database error, provide a clear but generic message.
+      throw Exception('A database error occurred. Please try again later.');
     } catch (e, st) {
-      logger.e('Error deleting project: $projectId', error: e, stackTrace: st);
-      throw Exception('Failed to delete project.');
+      // --- General Error Handling for any other exceptions (network, etc.) ---
+      logger.e(
+        'An unexpected error occurred while updating project: $projectId',
+        error: e,
+        stackTrace: st,
+      );
+
+      // Provide a generic, user-friendly message for unknown errors.
+      throw Exception(
+        'An unexpected error occurred. Please check your connection and try again.',
+      );
+    }
+  }
+
+  Future<void> deleteProject(BuildContext context, String projectId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Deletion'),
+        content: const Text(
+          'Are you sure you want to delete this project and all its tasks? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      logger.w('Attempting to PERMANENTLY DELETE project: $projectId');
+      try {
+        await _supabase.from('projects').delete().eq('id', projectId);
+        logger.i(
+          'Project (ID: $projectId) was successfully deleted from the database.',
+        );
+        notifyListeners();
+      } on PostgrestException catch (e, st) {
+        logger.e(
+          'A database error occurred while deleting project: $projectId',
+          error: e,
+          stackTrace: st,
+        );
+        throw Exception(
+          'A database error occurred while deleting the project. It may have already been removed.',
+        );
+      } catch (e, st) {
+        logger.e(
+          'An unexpected error occurred while deleting project: $projectId',
+          error: e,
+          stackTrace: st,
+        );
+        throw Exception(
+          'An unexpected error occurred. Please check your connection and try again.',
+        );
+      }
     }
   }
 }
@@ -907,150 +1139,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Project Management App',
-      theme: _buildThemeData(),
+      theme: AppTheme.build(),
       home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
-    );
-  }
-
-  ThemeData _buildThemeData() {
-    const primaryColor = Color(0xFF00796B); // A slightly deeper teal
-    const secondaryColor = Color(0xFFFFA000); // A richer amber
-    const backgroundColor = Color(0xFFF5F7FA); // A softer off-white
-    const surfaceColor = Colors.white;
-    const textColor = Color(0xFF333333);
-    const borderColor = Color(0xFFE0E0E0);
-
-    final baseTheme = ThemeData.light(useMaterial3: true);
-    final textTheme = GoogleFonts.manropeTextTheme(
-      baseTheme.textTheme,
-    ).apply(bodyColor: textColor, displayColor: textColor);
-
-    return baseTheme.copyWith(
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: primaryColor,
-        brightness: Brightness.light,
-        primary: primaryColor,
-        secondary: secondaryColor,
-        background: backgroundColor,
-        surface: surfaceColor,
-        onPrimary: Colors.white,
-        onSecondary: Colors.black,
-        onBackground: textColor,
-        onSurface: textColor,
-        error: const Color(0xFFD32F2F),
-      ),
-      scaffoldBackgroundColor: backgroundColor,
-      textTheme: textTheme.copyWith(
-        displayLarge: textTheme.displayLarge?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: primaryColor,
-          fontSize: 32,
-        ),
-        headlineMedium: textTheme.headlineMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          fontSize: 24,
-          color: textColor.withOpacity(0.9),
-        ),
-        titleLarge: textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.bold,
-          fontSize: 18,
-        ),
-        bodyLarge: textTheme.bodyLarge?.copyWith(fontSize: 16, height: 1.5),
-        bodyMedium: textTheme.bodyMedium?.copyWith(
-          fontSize: 14,
-          color: textColor.withOpacity(0.7),
-          height: 1.5,
-        ),
-        labelLarge: textTheme.labelLarge?.copyWith(
-          fontWeight: FontWeight.bold,
-          fontSize: 16,
-        ),
-      ),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        elevation: 1,
-        centerTitle: true,
-        titleTextStyle: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        ),
-      ),
-      cardTheme: CardThemeData(
-        elevation: 0.5,
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12.0),
-          side: const BorderSide(color: borderColor, width: 1),
-        ),
-        margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 0),
-        color: surfaceColor,
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8.0),
-          borderSide: const BorderSide(color: borderColor),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8.0),
-          borderSide: const BorderSide(color: borderColor),
-        ),
-        filled: true,
-        fillColor: surfaceColor,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: primaryColor,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          textStyle: textTheme.labelLarge,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8.0),
-          ),
-          elevation: 1,
-        ),
-      ),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: secondaryColor,
-        foregroundColor: Colors.black,
-        elevation: 2,
-      ),
-      dialogTheme: DialogThemeData(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16.0),
-        ),
-        titleTextStyle: textTheme.headlineMedium?.copyWith(fontSize: 20),
-        backgroundColor: surfaceColor,
-      ),
-      listTileTheme: ListTileThemeData(
-        iconColor: primaryColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      ),
-      bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        selectedItemColor: primaryColor,
-        unselectedItemColor: Colors.grey[500],
-        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
-        backgroundColor: surfaceColor,
-        elevation: 2,
-        type: BottomNavigationBarType.fixed,
-      ),
-      chipTheme: ChipThemeData(
-        backgroundColor: primaryColor.withOpacity(0.1),
-        labelStyle: TextStyle(
-          color: primaryColor,
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
-        ),
-        side: BorderSide.none,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      ),
     );
   }
 }
@@ -1173,6 +1264,40 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  Future<void> _resetPassword() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid email to reset password.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    final authService = Provider.of<AuthService>(context, listen: false);
+    try {
+      await authService.resetPassword(email);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password reset email sent!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst("Exception: ", ""))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1263,6 +1388,11 @@ class _AuthScreenState extends State<AuthScreen> {
                             ),
                       const SizedBox(height: 16),
                       _buildAuthSwitch(),
+                      if (_isLogin)
+                        TextButton(
+                          onPressed: _resetPassword,
+                          child: const Text('Forgot Password?'),
+                        ),
                     ],
                   ),
                 ),
@@ -1381,15 +1511,13 @@ class AdminHomePage extends StatefulWidget {
 class _AdminHomePageState extends State<AdminHomePage> {
   int _selectedIndex = 0;
 
-  final GlobalKey<_AdminDashboardScreenState> _dashboardKey = GlobalKey();
-
   late final List<Widget> _widgetOptions;
 
   @override
   void initState() {
     super.initState();
     _widgetOptions = <Widget>[
-      AdminDashboardScreen(key: _dashboardKey),
+      const AdminDashboardScreen(),
       const ProjectListScreen(),
       const EmployeeListScreen(),
       const ReportingScreen(),
@@ -1635,14 +1763,16 @@ class ProjectListScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final supabaseService = Provider.of<SupabaseService>(context);
-    final userModel = Provider.of<UserModelNotifier>(context).userModel;
+    final userModel = Provider.of<UserModelNotifier>(
+      context,
+      listen: false,
+    ).userModel;
     final bool isAdmin = userModel?.role == 'admin';
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: StreamBuilder<List<ProjectModel>>(
-        stream: supabaseService.getProjects(),
+        stream: Provider.of<SupabaseService>(context).getProjects(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -1675,7 +1805,7 @@ class ProjectListScreen extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   trailing: isAdmin
-                      ? _buildAdminMenu(context, project, supabaseService)
+                      ? _buildAdminMenu(context, project)
                       : const Icon(Icons.chevron_right),
                   onTap: () {
                     Navigator.push(
@@ -1694,8 +1824,9 @@ class ProjectListScreen extends StatelessWidget {
       floatingActionButton: isAdmin
           ? FloatingActionButton.extended(
               heroTag: 'new_project_fab',
-              onPressed: () =>
-                  _showCreateProjectDialog(context, supabaseService),
+              onPressed: () {
+                _showCreateProjectDialog(context);
+              },
               label: const Text('New Project'),
               icon: const Icon(Icons.add),
             )
@@ -1703,18 +1834,16 @@ class ProjectListScreen extends StatelessWidget {
     );
   }
 
-  // --- WIDGET BUILDER FOR THE ADMIN MENU ---
-  Widget _buildAdminMenu(
-    BuildContext context,
-    ProjectModel project,
-    SupabaseService service,
-  ) {
+  Widget _buildAdminMenu(BuildContext context, ProjectModel project) {
     return PopupMenuButton<String>(
       onSelected: (value) {
         if (value == 'edit') {
-          _showEditProjectDialog(context, project, service);
+          _showEditProjectDialog(context, project);
         } else if (value == 'delete') {
-          _showDeleteConfirmationDialog(context, project, service);
+          Provider.of<SupabaseService>(
+            context,
+            listen: false,
+          ).deleteProject(context, project.id);
         }
       },
       itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
@@ -1736,17 +1865,13 @@ class ProjectListScreen extends StatelessWidget {
     );
   }
 
-  // --- DIALOG FOR EDITING A PROJECT ---
-  void _showEditProjectDialog(
-    BuildContext context,
-    ProjectModel project,
-    SupabaseService service,
-  ) {
+  void _showEditProjectDialog(BuildContext context, ProjectModel project) {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController(text: project.name);
     final descriptionController = TextEditingController(
       text: project.description,
     );
+    final service = Provider.of<SupabaseService>(context, listen: false);
 
     showDialog(
       context: context,
@@ -1840,67 +1965,11 @@ class ProjectListScreen extends StatelessWidget {
     );
   }
 
-  // --- DIALOG FOR DELETING A PROJECT (WITH CONFIRMATION) ---
-  void _showDeleteConfirmationDialog(
-    BuildContext context,
-    ProjectModel project,
-    SupabaseService service,
-  ) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirm Deletion'),
-        content: Text.rich(
-          TextSpan(
-            text: 'Are you absolutely sure you want to delete the project "',
-            children: <TextSpan>[
-              TextSpan(
-                text: project.name,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const TextSpan(
-                text:
-                    '"?\n\nThis will permanently delete all associated uploads and tasks. This action cannot be undone.',
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              try {
-                Navigator.of(ctx).pop(); // Close the dialog first
-                await service.deleteProject(project.id);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Project "${project.name}" deleted.')),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Error: ${e.toString().replaceFirst("Exception: ", "")}',
-                    ),
-                  ),
-                );
-              }
-            },
-            child: const Text('DELETE'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- DIALOG FOR CREATING A PROJECT (UNCHANGED, BUT KEPT FOR COMPLETENESS) ---
-  void _showCreateProjectDialog(BuildContext context, SupabaseService service) {
+  void _showCreateProjectDialog(BuildContext context) {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController();
     final descriptionController = TextEditingController();
+    final service = Provider.of<SupabaseService>(context, listen: false);
 
     showDialog(
       context: context,
@@ -1952,12 +2021,6 @@ class ProjectListScreen extends StatelessWidget {
                                 descriptionController.text.trim(),
                               );
                               if (ctx.mounted) Navigator.of(ctx).pop();
-                              final adminHomePageState = context
-                                  .findAncestorStateOfType<
-                                    _AdminHomePageState
-                                  >();
-                              adminHomePageState?._dashboardKey.currentState
-                                  ?.refresh();
                             } catch (e) {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -2696,9 +2759,6 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${employee.name} deactivated.')),
         );
-        final adminHomePageState = context
-            .findAncestorStateOfType<_AdminHomePageState>();
-        adminHomePageState?._dashboardKey.currentState?.refresh();
       } catch (e) {
         ScaffoldMessenger.of(
           context,
@@ -2795,12 +2855,6 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
                                 emailController.text.trim(),
                                 tempPassword,
                               );
-                              final adminHomePageState = context
-                                  .findAncestorStateOfType<
-                                    _AdminHomePageState
-                                  >();
-                              adminHomePageState?._dashboardKey.currentState
-                                  ?.refresh();
                             } catch (e) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(

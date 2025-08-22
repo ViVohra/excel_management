@@ -253,6 +253,7 @@ class ProjectModel extends Equatable {
   final String status;
   final DateTime? startDate;
   final DateTime? endDate;
+  final String? createdBy;
 
   const ProjectModel({
     required this.id,
@@ -261,6 +262,7 @@ class ProjectModel extends Equatable {
     required this.status,
     this.startDate,
     this.endDate,
+    this.createdBy,
   });
 
   factory ProjectModel.fromMap(Map<String, dynamic> map) {
@@ -275,6 +277,7 @@ class ProjectModel extends Equatable {
       endDate: map['end_date'] == null
           ? null
           : DateTime.tryParse(map['end_date'] as String),
+      createdBy: map['created_by'] as String?,
     );
   }
 
@@ -286,6 +289,7 @@ class ProjectModel extends Equatable {
     status,
     startDate,
     endDate,
+    createdBy,
   ];
 }
 
@@ -409,13 +413,6 @@ class AuthService with ChangeNotifier {
   }) async {
     logger.i('Attempting to sign up new admin: $email');
     try {
-      final response = await _supabase
-          .from('users')
-          .select('uid')
-          .eq('role', 'admin');
-      if (response.isNotEmpty) {
-        throw Exception('An admin account already exists.');
-      }
       final authResponse = await _supabase.auth.signUp(
         email: email,
         password: password,
@@ -546,21 +543,24 @@ class SupabaseService with ChangeNotifier {
   final SupabaseClient _supabase = Supabase.instance.client;
   final _uuid = const Uuid();
 
-  static const _getAdminSummaryRpc = 'get_admin_dashboard_summary';
+  static const _getAdminSummaryRpc = 'get_admin_dashboard_summary_for_admin';
   static const _getAllTasksForUserRpc = 'get_all_tasks_for_user';
   static const _getUploadsForUserInProjectRpc =
       'get_uploads_for_user_in_project';
   static const _getProjectsForUserRpc = 'get_projects_for_user';
 
-  Future<Map<String, dynamic>> getAdminDashboardSummary() async {
-    logger.d('Fetching admin dashboard summary.');
+  Future<Map<String, dynamic>> getAdminDashboardSummary(String adminId) async {
+    logger.d('Fetching admin dashboard summary for admin: $adminId');
     try {
-      final response = await _supabase.rpc(_getAdminSummaryRpc);
-      logger.i('Successfully fetched admin dashboard summary.');
+      final response = await _supabase.rpc(
+        _getAdminSummaryRpc,
+        params: {'p_admin_id': adminId},
+      );
+      logger.i('Successfully fetched admin dashboard summary for $adminId.');
       return response as Map<String, dynamic>;
     } catch (e, st) {
       logger.e(
-        'Error getting admin dashboard summary',
+        'Error getting admin dashboard summary for $adminId',
         error: e,
         stackTrace: st,
       );
@@ -610,12 +610,25 @@ class SupabaseService with ChangeNotifier {
         });
   }
 
-  Stream<List<ProjectModel>> getProjects() {
+  Stream<List<ProjectModel>> getProjectsForAdmin(String adminId) {
+    logger.d('Setting up stream for projects for admin: $adminId');
+    return _supabase
+        .from('projects')
+        .stream(primaryKey: ['id'])
+        .eq('created_by', adminId)
+        .order('name', ascending: true)
+        .map((maps) {
+          logger.v('Received new data from admin-specific projects stream.');
+          return maps.map((map) => ProjectModel.fromMap(map)).toList();
+        });
+  }
+
+  Stream<List<ProjectModel>> getAllProjects() {
     logger.d('Setting up stream for all projects.');
     return _supabase
         .from('projects')
         .stream(primaryKey: ['id'])
-        .order('name', ascending: true) // Added ordering for consistency
+        .order('name', ascending: true)
         .map((maps) {
           logger.v('Received new data from projects stream.');
           return maps.map((map) => ProjectModel.fromMap(map)).toList();
@@ -765,13 +778,21 @@ class SupabaseService with ChangeNotifier {
 
   Future<void> createProject(String name, String description) async {
     logger.i('Creating new project: $name');
+    final currentUser = _supabase.auth.currentUser;
+    if (currentUser == null) {
+      throw Exception('User not authenticated. Cannot create project.');
+    }
+
     try {
       await _supabase.from('projects').insert({
         'name': name,
         'description': description,
         'status': 'Not Started',
+        'created_by': currentUser.id,
       });
-      logger.i('Project "$name" created successfully.');
+      logger.i(
+        'Project "$name" created successfully by admin ${currentUser.id}.',
+      );
       notifyListeners();
     } on PostgrestException catch (e) {
       if (e.code == '23505') {
@@ -972,53 +993,36 @@ class SupabaseService with ChangeNotifier {
     String name,
     String description,
   ) async {
-    // Log the intention to update for clear debugging trails.
     logger.i('Attempting to update project: $projectId with name: $name');
 
     try {
-      // 1. Perform the database query and wait for it to complete.
-      // The .select() is added to ensure the query returns a result,
-      // which helps in verifying the operation's success.
       await _supabase
           .from('projects')
           .update({'name': name, 'description': description})
           .eq('id', projectId)
-          .select(); // Ensures the update is fully processed.
-
-      // 2. Log the successful outcome.
+          .select();
       logger.i(
         'Project "$name" (ID: $projectId) updated successfully in the database.',
       );
-
-      // 3. Signal to the UI to rebuild. This is the key to an instant refresh.
-      // Any widget listening with a `Consumer` will now refetch its data.
       notifyListeners();
     } on PostgrestException catch (e, st) {
-      // --- Specific Error Handling for Database Issues ---
       logger.e(
         'A database error occurred while updating project: $projectId',
         error: e,
         stackTrace: st,
       );
-
-      // Check for a unique constraint violation (e.g., duplicate project name).
       if (e.code == '23505') {
         throw Exception(
           'A project with this name already exists. Please choose a different name.',
         );
       }
-
-      // For any other database error, provide a clear but generic message.
       throw Exception('A database error occurred. Please try again later.');
     } catch (e, st) {
-      // --- General Error Handling for any other exceptions (network, etc.) ---
       logger.e(
         'An unexpected error occurred while updating project: $projectId',
         error: e,
         stackTrace: st,
       );
-
-      // Provide a generic, user-friendly message for unknown errors.
       throw Exception(
         'An unexpected error occurred. Please check your connection and try again.',
       );
@@ -1606,7 +1610,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       context,
       listen: false,
     );
-    return supabaseService.getAdminDashboardSummary();
+    final userModel = Provider.of<UserModelNotifier>(
+      context,
+      listen: false,
+    ).userModel;
+
+    if (userModel == null) {
+      logger.w("AdminDashboard: User not available yet, cannot fetch summary.");
+      return Future.value({'error': 'User not available'});
+    }
+    return supabaseService.getAdminDashboardSummary(userModel.uid);
   }
 
   void refresh() {
@@ -1769,10 +1782,19 @@ class ProjectListScreen extends StatelessWidget {
     ).userModel;
     final bool isAdmin = userModel?.role == 'admin';
 
+    final Stream<List<ProjectModel>> projectsStream;
+    final supabaseService = Provider.of<SupabaseService>(context);
+
+    if (isAdmin && userModel != null) {
+      projectsStream = supabaseService.getProjectsForAdmin(userModel.uid);
+    } else {
+      projectsStream = supabaseService.getAllProjects();
+    }
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: StreamBuilder<List<ProjectModel>>(
-        stream: Provider.of<SupabaseService>(context).getProjects(),
+        stream: projectsStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -1804,7 +1826,7 @@ class ProjectListScreen extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  trailing: isAdmin
+                  trailing: (isAdmin || userModel?.role == 'manager')
                       ? _buildAdminMenu(context, project)
                       : const Icon(Icons.chevron_right),
                   onTap: () {
@@ -1821,7 +1843,7 @@ class ProjectListScreen extends StatelessWidget {
           );
         },
       ),
-      floatingActionButton: isAdmin
+      floatingActionButton: (isAdmin || userModel?.role == 'manager')
           ? FloatingActionButton.extended(
               heroTag: 'new_project_fab',
               onPressed: () {
@@ -2066,7 +2088,6 @@ class ReportingScreen extends StatefulWidget {
 }
 
 class _ReportingScreenState extends State<ReportingScreen> {
-  // === STATE FOR FILTERS ===
   ProjectModel? _selectedProject;
   UserModel? _selectedEmployee;
   DateTime? _startDate;
@@ -2080,25 +2101,20 @@ class _ReportingScreenState extends State<ReportingScreen> {
     "Under Review",
   ];
 
-  // === STATE FOR DATA AND UI ===
   bool _isLoading = false;
   List<Map<String, dynamic>> _reportData = [];
   String? _errorMessage;
 
-  // NEW: State for dynamic columns
   List<String> _allPossibleDataColumns = [];
   Set<String> _selectedDataColumns = {};
 
-  // NEW: State for the chart
   List<BarChartGroupData> _chartData = [];
   late SupabaseService _supabaseService;
   bool _isServiceInitialized = false;
 
-  // === LIFECYCLE METHODS ===
   @override
   void initState() {
     super.initState();
-    // NEW: Set default date range to the current month on first load
     _setDefaultDateRange();
   }
 
@@ -2108,13 +2124,10 @@ class _ReportingScreenState extends State<ReportingScreen> {
     if (!_isServiceInitialized) {
       _supabaseService = Provider.of<SupabaseService>(context, listen: false);
       _isServiceInitialized = true;
-      // NEW: Automatically generate report on first load with default dates
-      // FIX: The callback must accept a Duration argument, which we ignore with _.
       WidgetsBinding.instance.addPostFrameCallback((_) => _generateReport());
     }
   }
 
-  // === DATA HANDLING AND PROCESSING ===
   void _setDefaultDateRange() {
     final now = DateTime.now();
     _startDate = DateTime(now.year, now.month, 1);
@@ -2127,8 +2140,7 @@ class _ReportingScreenState extends State<ReportingScreen> {
       _errorMessage = null;
       _reportData = [];
       _chartData = [];
-      // Clear previous chart data
-      _allPossibleDataColumns = []; // Clear previous dynamic columns
+      _allPossibleDataColumns = [];
     });
     try {
       final data = await _supabaseService.getFilteredTaskReport(
@@ -2140,7 +2152,6 @@ class _ReportingScreenState extends State<ReportingScreen> {
       );
       setState(() {
         _reportData = data;
-        // NEW: Process data for charts and columns after fetching
         _processChartData(data);
         _discoverDataColumns(data);
       });
@@ -2155,7 +2166,7 @@ class _ReportingScreenState extends State<ReportingScreen> {
         });
       }
     }
-  } // NEW: Processes fetched data to generate chart data
+  }
 
   void _processChartData(List<Map<String, dynamic>> data) {
     if (data.isEmpty) return;
@@ -2182,7 +2193,6 @@ class _ReportingScreenState extends State<ReportingScreen> {
     }).toList();
   }
 
-  // NEW: Discovers all possible dynamic columns from the 'task_data' field
   void _discoverDataColumns(List<Map<String, dynamic>> data) {
     if (data.isEmpty) return;
     final Set<String> columns = {};
@@ -2210,7 +2220,6 @@ class _ReportingScreenState extends State<ReportingScreen> {
     });
   }
 
-  // === UI HELPER METHODS ===
   Future<void> _selectDateRange(BuildContext context) async {
     final picked = await showDateRangePicker(
       context: context,
@@ -2228,7 +2237,6 @@ class _ReportingScreenState extends State<ReportingScreen> {
     }
   }
 
-  // NEW: Shows a dialog to let the user select which extra columns to display
   Future<void> _showColumnSelectionDialog() async {
     final Set<String> tempSelected = Set<String>.from(_selectedDataColumns);
     await showDialog(
@@ -2281,7 +2289,6 @@ class _ReportingScreenState extends State<ReportingScreen> {
   }
 
   Future<void> _exportToCsv() async {
-    // ... (This method remains unchanged) ...
     if (_reportData.isEmpty) {
       ScaffoldMessenger.of(
         context,
@@ -2348,7 +2355,7 @@ class _ReportingScreenState extends State<ReportingScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("Report '$fileName' saved successfully!")),
     );
-  } // === MAIN BUILD METHOD ===
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2360,13 +2367,10 @@ class _ReportingScreenState extends State<ReportingScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- FILTERS ---
-            _buildFiltersSection(), const SizedBox(height: 16),
-            // --- ACTION BUTTONS ---
+            _buildFiltersSection(),
+            const SizedBox(height: 16),
             _buildActionButtons(theme),
             const Divider(height: 32),
-
-            // --- RESULTS (CHARTS AND TABLE) ---
             _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _buildResultsView(),
@@ -2374,7 +2378,7 @@ class _ReportingScreenState extends State<ReportingScreen> {
         ),
       ),
     );
-  } // === WIDGET BUILDER METHODS ===
+  }
 
   Widget _buildFiltersSection() {
     return Container(
@@ -2388,9 +2392,8 @@ class _ReportingScreenState extends State<ReportingScreen> {
         runSpacing: 16,
         alignment: WrapAlignment.start,
         children: [
-          // ... (Dropdown filters remain the same) ...
           StreamBuilder<List<ProjectModel>>(
-            stream: _supabaseService.getProjects(),
+            stream: _supabaseService.getAllProjects(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(
@@ -2471,7 +2474,6 @@ class _ReportingScreenState extends State<ReportingScreen> {
         ),
         const Spacer(),
         if (_reportData.isNotEmpty) ...[
-          // NEW: Button to select which data columns to show
           TextButton.icon(
             onPressed: _allPossibleDataColumns.isNotEmpty
                 ? _showColumnSelectionDialog
@@ -2515,7 +2517,6 @@ class _ReportingScreenState extends State<ReportingScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // --- CHART SECTION ---
         Text(
           'Tasks per Employee',
           style: Theme.of(context).textTheme.headlineSmall,
@@ -2531,13 +2532,11 @@ class _ReportingScreenState extends State<ReportingScreen> {
           ),
         ),
         const SizedBox(height: 32),
-        // --- DATA TABLE / LIST VIEW SECTION ---
         Text(
           'Detailed Report',
           style: Theme.of(context).textTheme.headlineSmall,
         ),
         const SizedBox(height: 16),
-        // NEW: Responsive layout for the data display
         LayoutBuilder(
           builder: (context, constraints) {
             if (constraints.maxWidth < 800) {
@@ -2549,7 +2548,7 @@ class _ReportingScreenState extends State<ReportingScreen> {
         ),
       ],
     );
-  } // NEW: Refactored mobile view
+  }
 
   Widget _buildMobileListView() {
     return ListView.builder(
@@ -2590,7 +2589,6 @@ class _ReportingScreenState extends State<ReportingScreen> {
     );
   }
 
-  // NEW: Desktop data table view
   Widget _buildDesktopDataTable() {
     final List<String> fixedHeaders = [
       'Project',
@@ -3392,7 +3390,6 @@ class TaskDataSource extends DataGridSource {
 
   void updateTasks(List<Map<String, dynamic>> newTasks) {
     tasks = newTasks;
-    // Discover columns only if they weren't provided from the database
     if (_dataColumnNames.isEmpty) {
       _discoverDataColumnNames();
     }
@@ -3420,7 +3417,7 @@ class TaskDataSource extends DataGridSource {
       return;
     }
     final orderedKeys = <String>[];
-    final seenKeys = <String>{}; // Use a Set for fast lookups
+    final seenKeys = <String>{};
 
     for (var task in tasks) {
       final taskData = task['data'] as Map<String, dynamic>? ?? {};
@@ -3441,18 +3438,16 @@ class TaskDataSource extends DataGridSource {
   @override
   List<DataGridRow> get rows => _rows;
 
-  // --- SINGLE SOURCE OF TRUTH FOR COLUMN ORDER ---
   List<String> _getUnifiedColumnList() {
     return [
       'id',
       'status',
       'assignedTo',
       'employee_remarks',
-      ..._dataColumnNames, // The dynamic columns from the Excel file
+      ..._dataColumnNames,
     ];
   }
 
-  // REWRITTEN to use the unified column list
   void _buildDataGridRows() {
     final unifiedColumns = _getUnifiedColumnList();
     _rows = tasks.map<DataGridRow>((task) {
@@ -3460,14 +3455,12 @@ class TaskDataSource extends DataGridSource {
       return DataGridRow(
         cells: unifiedColumns.map((colName) {
           dynamic cellValue;
-          // Get the value from the correct part of the task map
           if (colName == 'id' ||
               colName == 'status' ||
               colName == 'assignedTo' ||
               colName == 'employee_remarks') {
             cellValue = task[colName];
           } else {
-            // It's a dynamic column from the 'data' map
             cellValue = taskData[colName];
           }
           return DataGridCell(columnName: colName, value: cellValue);
@@ -3476,7 +3469,6 @@ class TaskDataSource extends DataGridSource {
     }).toList();
   }
 
-  // REWRITTEN to use the unified column list
   @override
   List<GridColumn> getColumns(BuildContext? context) {
     GridColumn buildColumn(
@@ -3514,20 +3506,18 @@ class TaskDataSource extends DataGridSource {
           return buildColumn(name, 'Assigned To', minWidth: 160);
         case 'employee_remarks':
           return buildColumn(name, 'Employee Remarks', minWidth: 250);
-        default: // This handles all dynamic columns from the Excel file
+        default:
           return buildColumn(name, name.replaceAll("_", " ").capitalizeFirst());
       }
     }).toList();
   }
 
-  // REWRITTEN AND ROBUST to use the master column list as its guide
   @override
   DataGridRowAdapter buildRow(DataGridRow row) {
     final bool isAdmin = currentUserRoleModel?.role == 'admin';
     final bool isManager = currentUserRoleModel?.role == 'manager';
     final String currentUserId = currentUserRoleModel?.uid ?? "";
 
-    // Create a map for quick cell lookup by column name.
     final Map<String, DataGridCell> cellMap = {
       for (var cell in row.getCells()) cell.columnName: cell,
     };
@@ -3553,11 +3543,8 @@ class TaskDataSource extends DataGridSource {
         taskDataForRow['assignedTo'] as String? ?? "";
     final bool isAssignedToCurrentUser = (assignedToUidInRow == currentUserId);
 
-    // Get the master list of columns. This is our guide.
     final unifiedColumns = _getUnifiedColumnList();
 
-    // Build the list of widgets by iterating through the master list,
-    // guaranteeing the order matches the headers.
     return DataGridRowAdapter(
       cells: unifiedColumns.map<Widget>((columnName) {
         final dataGridCell = cellMap[columnName];
@@ -3870,7 +3857,7 @@ class UploadListScreen extends StatelessWidget {
         project.id,
         fileName,
         tasksData,
-        processedHeaderRow, // Pass the processed headers to the database
+        processedHeaderRow,
       );
 
       Navigator.of(context).pop();
@@ -4246,6 +4233,68 @@ class _TaskListScreenState extends State<TaskListScreen> {
     }
   }
 
+  Future<void> _exportToCsv() async {
+    if (_taskDataSource.tasks.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("No data to export.")));
+      return;
+    }
+
+    final List<Map<String, dynamic>> flattenedData = _taskDataSource.tasks.map((
+      task,
+    ) {
+      final Map<String, dynamic> flatRow = {
+        'status': task['status'],
+        'employee_remarks': task['employee_remarks'],
+        'assigned_to': _employees
+            .firstWhere(
+              (e) => e.uid == task['assignedTo'],
+              orElse: () => const UserModel(
+                uid: '',
+                email: '',
+                name: 'Unassigned',
+                role: '',
+                isActive: false,
+              ),
+            )
+            .name,
+      };
+      if (task['data'] is Map) {
+        (task['data'] as Map).forEach((key, value) {
+          flatRow[key.toString()] = value;
+        });
+      }
+      return flatRow;
+    }).toList();
+
+    final Set<String> headerSet = {};
+    for (var row in flattenedData) {
+      headerSet.addAll(row.keys);
+    }
+    final List<String> orderedHeaders = headerSet.toList()..sort();
+
+    List<List<dynamic>> csvData = [orderedHeaders];
+    for (var row in flattenedData) {
+      csvData.add(orderedHeaders.map((header) => row[header]).toList());
+    }
+
+    String csv = const ListToCsvConverter().convert(csvData);
+    final Uint8List bytes = Uint8List.fromList(csv.codeUnits);
+    final String fileName =
+        "${widget.upload.fileName.replaceAll('.xlsx', '').replaceAll('.csv', '')}_${DateFormat('yyyyMMdd').format(DateTime.now())}.csv";
+
+    await FileSaver.instance.saveFile(
+      name: fileName,
+      bytes: bytes,
+      fileExtension: 'csv',
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Report '$fileName' saved successfully!")),
+    );
+  }
+
   @override
   void dispose() {
     _taskDataSource.disposeControllers();
@@ -4284,6 +4333,13 @@ class _TaskListScreenState extends State<TaskListScreen> {
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download_outlined),
+            tooltip: 'Export to CSV',
+            onPressed: _exportToCsv,
+          ),
+        ],
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: Provider.of<SupabaseService>(context, listen: false)
@@ -4573,7 +4629,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           .addComment(_currentTask['id'], comment, user)
           .then((_) {
             _commentController.clear();
-            FocusScope.of(context).unfocus(); // Dismiss keyboard
+            FocusScope.of(context).unfocus();
           })
           .catchError((e) {
             ScaffoldMessenger.of(context).showSnackBar(

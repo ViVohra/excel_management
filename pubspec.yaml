@@ -48,6 +48,8 @@ dependencies:
   equatable: ^2.0.7
   google_fonts: ^6.3.0
   collection: ^1.19.1
+  function_tree: ^0.9.1
+  image_picker: ^1.2.0
 
 dev_dependencies:
   flutter_test:
@@ -98,6 +100,6 @@ flutter:
       #       - asset: fonts/TrajanPro.ttf
       #       - asset: fonts/TrajanPro_Bold.ttf
       #         weight: 700
-      #
+    #
     # For details regarding fonts from package dependencies,
     # see https://flutter.dev/to/font-from-package

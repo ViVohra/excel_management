@@ -32,6 +32,13 @@ final logger = Logger(
   ),
 );
 
+// ======== RESPONSIVE BREAKPOINTS ========
+class Breakpoints {
+  static const double mobile = 600;
+  static const double tablet = 840;
+  static const double desktop = 1200;
+}
+
 // ======== THEME DEFINITION (CENTRALIZED) ========
 class AppTheme {
   static ThemeData build() {
@@ -1432,11 +1439,13 @@ class _AuthScreenState extends State<AuthScreen> {
 // ======== WIDGETS (REUSABLE COMPONENTS) ========
 class ResponsiveLayout extends StatelessWidget {
   final Widget mobileBody;
+  final Widget tabletBody;
   final Widget desktopBody;
 
   const ResponsiveLayout({
     Key? key,
     required this.mobileBody,
+    required this.tabletBody,
     required this.desktopBody,
   }) : super(key: key);
 
@@ -1444,10 +1453,12 @@ class ResponsiveLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < 800) {
-          return mobileBody;
-        } else {
+        if (constraints.maxWidth >= Breakpoints.desktop) {
           return desktopBody;
+        } else if (constraints.maxWidth >= Breakpoints.mobile) {
+          return tabletBody;
+        } else {
+          return mobileBody;
         }
       },
     );
@@ -1489,13 +1500,25 @@ class InfoCard extends StatelessWidget {
               child: Icon(icon, size: 28, color: color),
             ),
             const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(title, style: theme.textTheme.bodyMedium),
-                Text(value, style: theme.textTheme.headlineMedium),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.bodyMedium,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    value,
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontSize: 20,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -1516,76 +1539,142 @@ class _AdminHomePageState extends State<AdminHomePage> {
   int _selectedIndex = 0;
 
   late final List<Widget> _widgetOptions;
+  late final List<String> _titles;
 
   @override
   void initState() {
     super.initState();
+    final userModel = Provider.of<UserModelNotifier>(
+      context,
+      listen: false,
+    ).userModel;
     _widgetOptions = <Widget>[
       const AdminDashboardScreen(),
       const ProjectListScreen(),
       const EmployeeListScreen(),
       const ReportingScreen(),
     ];
-  }
-
-  void _onItemTapped(int index) {
-    setState(() => _selectedIndex = index);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final userModel = Provider.of<UserModelNotifier>(context).userModel;
-    final titles = [
+    _titles = [
       'Welcome, ${userModel?.name ?? 'Admin'}',
       'Manage Projects',
       'Manage Employees',
       'Reporting & Analytics',
     ];
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(titles[_selectedIndex]),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-            onPressed: () {
-              authService.signOut();
-            },
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final width = MediaQuery.of(context).size.width;
+
+    if (width < Breakpoints.mobile) {
+      // Mobile Layout with BottomNavigationBar
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(_titles[_selectedIndex]),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Logout',
+              onPressed: () => authService.signOut(),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: _widgetOptions,
+            ),
           ),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-        child: IndexedStack(index: _selectedIndex, children: _widgetOptions),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined),
-            activeIcon: Icon(Icons.dashboard_rounded),
-            label: 'Dashboard',
+        ),
+        bottomNavigationBar: BottomNavigationBar(
+          items: const <BottomNavigationBarItem>[
+            BottomNavigationBarItem(
+              icon: Icon(Icons.dashboard_outlined),
+              activeIcon: Icon(Icons.dashboard),
+              label: 'Dashboard',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.assignment_outlined),
+              activeIcon: Icon(Icons.assignment),
+              label: 'Projects',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.people_alt_outlined),
+              activeIcon: Icon(Icons.people),
+              label: 'Employees',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.bar_chart_outlined),
+              activeIcon: Icon(Icons.bar_chart),
+              label: 'Reporting',
+            ),
+          ],
+          currentIndex: _selectedIndex,
+          onTap: (index) => setState(() => _selectedIndex = index),
+        ),
+      );
+    } else {
+      // Desktop/Tablet Layout with NavigationRail
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(_titles[_selectedIndex]),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Logout',
+              onPressed: () => authService.signOut(),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: Row(
+            children: [
+              NavigationRail(
+                selectedIndex: _selectedIndex,
+                onDestinationSelected: (index) =>
+                    setState(() => _selectedIndex = index),
+                labelType: NavigationRailLabelType.all,
+                destinations: const <NavigationRailDestination>[
+                  NavigationRailDestination(
+                    icon: Icon(Icons.dashboard_outlined),
+                    selectedIcon: Icon(Icons.dashboard),
+                    label: Text('Dashboard'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.assignment_outlined),
+                    selectedIcon: Icon(Icons.assignment),
+                    label: Text('Projects'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.people_alt_outlined),
+                    selectedIcon: Icon(Icons.people),
+                    label: Text('Employees'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.bar_chart_outlined),
+                    selectedIcon: Icon(Icons.bar_chart),
+                    label: Text('Reporting'),
+                  ),
+                ],
+              ),
+              const VerticalDivider(thickness: 1, width: 1),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: IndexedStack(
+                    index: _selectedIndex,
+                    children: _widgetOptions,
+                  ),
+                ),
+              ),
+            ],
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.assignment_outlined),
-            activeIcon: Icon(Icons.assignment_rounded),
-            label: 'Projects',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people_alt_outlined),
-            activeIcon: Icon(Icons.people_alt_rounded),
-            label: 'Employees',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart_outlined),
-            activeIcon: Icon(Icons.bar_chart_rounded),
-            label: 'Reporting',
-          ),
-        ],
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-      ),
-    );
+        ),
+      );
+    }
   }
 }
 
@@ -1708,23 +1797,30 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   style: theme.textTheme.headlineMedium,
                 ),
                 const SizedBox(height: 24),
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 400,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    childAspectRatio: 3,
-                  ),
-                  itemCount: infoCardsData.length,
-                  itemBuilder: (context, index) {
-                    final cardData = infoCardsData[index];
-                    return InfoCard(
-                      title: cardData['title'],
-                      value: cardData['value'],
-                      icon: cardData['icon'],
-                      color: cardData['color'],
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final crossAxisCount = (constraints.maxWidth / 350)
+                        .floor()
+                        .clamp(1, 4);
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount,
+                        mainAxisSpacing: 16,
+                        crossAxisSpacing: 16,
+                        childAspectRatio: 3,
+                      ),
+                      itemCount: infoCardsData.length,
+                      itemBuilder: (context, index) {
+                        final cardData = infoCardsData[index];
+                        return InfoCard(
+                          title: cardData['title'],
+                          value: cardData['value'],
+                          icon: cardData['icon'],
+                          color: cardData['color'],
+                        );
+                      },
                     );
                   },
                 ),
@@ -2112,6 +2208,13 @@ class _ReportingScreenState extends State<ReportingScreen> {
   late SupabaseService _supabaseService;
   bool _isServiceInitialized = false;
 
+  // New state variables for dashboard
+  double _totalBilled = 0;
+  double _totalPaid = 0;
+  int _workedClaims = 0;
+  int _nonWorkedClaims = 0;
+  Map<String, int> _claimBuckets = {};
+
   @override
   void initState() {
     super.initState();
@@ -2141,6 +2244,11 @@ class _ReportingScreenState extends State<ReportingScreen> {
       _reportData = [];
       _chartData = [];
       _allPossibleDataColumns = [];
+      _totalBilled = 0;
+      _totalPaid = 0;
+      _workedClaims = 0;
+      _nonWorkedClaims = 0;
+      _claimBuckets = {};
     });
     try {
       final data = await _supabaseService.getFilteredTaskReport(
@@ -2154,6 +2262,7 @@ class _ReportingScreenState extends State<ReportingScreen> {
         _reportData = data;
         _processChartData(data);
         _discoverDataColumns(data);
+        _calculateDashboardMetrics(data);
       });
     } catch (e) {
       setState(() {
@@ -2166,6 +2275,64 @@ class _ReportingScreenState extends State<ReportingScreen> {
         });
       }
     }
+  }
+
+  void _calculateDashboardMetrics(List<Map<String, dynamic>> data) {
+    if (data.isEmpty) return;
+
+    double billed = 0;
+    double paid = 0;
+    int worked = 0;
+    int notWorked = 0;
+    Map<String, int> buckets = {
+      "0-29 Days": 0,
+      "30-59 Days": 0,
+      "60-89 Days": 0,
+      "90+ Days": 0,
+    };
+
+    final now = DateTime.now();
+
+    for (final row in data) {
+      final taskData = row['task_data'] as Map<String, dynamic>? ?? {};
+
+      // Billed and Paid
+      billed += double.tryParse(taskData['CHARGES']?.toString() ?? '0') ?? 0;
+      paid += double.tryParse(taskData['Pmts/Refunds']?.toString() ?? '0') ?? 0;
+
+      // Worked vs Non-worked
+      if (row['status'] != 'Not Started') {
+        worked++;
+      } else {
+        notWorked++;
+      }
+
+      // Claim Bucketing
+      final serviceDateString = taskData['SERVICE DATE']?.toString();
+      if (serviceDateString != null) {
+        final serviceDate = DateTime.tryParse(serviceDateString);
+        if (serviceDate != null) {
+          final difference = now.difference(serviceDate).inDays;
+          if (difference >= 0 && difference < 30) {
+            buckets["0-29 Days"] = (buckets["0-29 Days"] ?? 0) + 1;
+          } else if (difference >= 30 && difference < 60) {
+            buckets["30-59 Days"] = (buckets["30-59 Days"] ?? 0) + 1;
+          } else if (difference >= 60 && difference < 90) {
+            buckets["60-89 Days"] = (buckets["60-89 Days"] ?? 0) + 1;
+          } else if (difference >= 90) {
+            buckets["90+ Days"] = (buckets["90+ Days"] ?? 0) + 1;
+          }
+        }
+      }
+    }
+
+    setState(() {
+      _totalBilled = billed;
+      _totalPaid = paid;
+      _workedClaims = worked;
+      _nonWorkedClaims = notWorked;
+      _claimBuckets = buckets;
+    });
   }
 
   void _processChartData(List<Map<String, dynamic>> data) {
@@ -2517,6 +2684,8 @@ class _ReportingScreenState extends State<ReportingScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _buildDashboard(),
+        const SizedBox(height: 32),
         Text(
           'Tasks per Employee',
           style: Theme.of(context).textTheme.headlineSmall,
@@ -2539,12 +2708,97 @@ class _ReportingScreenState extends State<ReportingScreen> {
         const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
-            if (constraints.maxWidth < 800) {
+            if (constraints.maxWidth < Breakpoints.tablet) {
               return _buildMobileListView();
             } else {
               return _buildDesktopDataTable();
             }
           },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDashboard() {
+    final formatCurrency = NumberFormat.simpleCurrency(decimalDigits: 2);
+    final percentagePaid = _totalBilled > 0
+        ? (_totalPaid / _totalBilled) * 100
+        : 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("Dashboard", style: Theme.of(context).textTheme.headlineSmall),
+        const SizedBox(height: 16),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final crossAxisCount = (constraints.maxWidth / 300).floor().clamp(
+              1,
+              4,
+            );
+            return GridView.count(
+              crossAxisCount: crossAxisCount,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              childAspectRatio: 2.5,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              children: [
+                InfoCard(
+                  title: "Billed Amount",
+                  value: formatCurrency.format(_totalBilled),
+                  icon: Icons.monetization_on,
+                  color: Colors.blue,
+                ),
+                InfoCard(
+                  title: "Paid Amount",
+                  value: formatCurrency.format(_totalPaid),
+                  icon: Icons.price_check,
+                  color: Colors.green,
+                ),
+                InfoCard(
+                  title: "% Billed vs Paid",
+                  value: "${percentagePaid.toStringAsFixed(2)}%",
+                  icon: Icons.pie_chart,
+                  color: Colors.orange,
+                ),
+                InfoCard(
+                  title: "Worked Claims",
+                  value: _workedClaims.toString(),
+                  icon: Icons.work,
+                  color: Colors.purple,
+                ),
+                InfoCard(
+                  title: "Non-Worked Claims",
+                  value: _nonWorkedClaims.toString(),
+                  icon: Icons.work_off,
+                  color: Colors.red,
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 24),
+        Text(
+          "Claim Bucketing (by Service Date)",
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: _claimBuckets.entries.map((entry) {
+                return ListTile(
+                  title: Text(entry.key),
+                  trailing: Text(
+                    entry.value.toString(),
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
         ),
       ],
     );
@@ -3441,8 +3695,13 @@ class TaskDataSource extends DataGridSource {
   List<String> _getUnifiedColumnList() {
     return [
       'id',
-      'status',
+      'work_date',
+      'notes',
       'assignedTo',
+      'denial_reason',
+      'status',
+      'responsible_party',
+      'action',
       'employee_remarks',
       ..._dataColumnNames,
     ];
@@ -3458,7 +3717,12 @@ class TaskDataSource extends DataGridSource {
           if (colName == 'id' ||
               colName == 'status' ||
               colName == 'assignedTo' ||
-              colName == 'employee_remarks') {
+              colName == 'employee_remarks' ||
+              colName == 'work_date' ||
+              colName == 'notes' ||
+              colName == 'denial_reason' ||
+              colName == 'responsible_party' ||
+              colName == 'action') {
             cellValue = task[colName];
           } else {
             cellValue = taskData[colName];
@@ -3500,10 +3764,20 @@ class TaskDataSource extends DataGridSource {
       switch (name) {
         case 'id':
           return buildColumn(name, 'ID', visible: false);
-        case 'status':
-          return buildColumn(name, 'Status', minWidth: 130);
+        case 'work_date':
+          return buildColumn(name, 'Work Date', minWidth: 130);
+        case 'notes':
+          return buildColumn(name, 'Notes', minWidth: 250);
         case 'assignedTo':
           return buildColumn(name, 'Assigned To', minWidth: 160);
+        case 'denial_reason':
+          return buildColumn(name, 'Denial Reason', minWidth: 150);
+        case 'status':
+          return buildColumn(name, 'Status', minWidth: 130);
+        case 'responsible_party':
+          return buildColumn(name, 'Responsible Party', minWidth: 150);
+        case 'action':
+          return buildColumn(name, 'Action', minWidth: 150);
         case 'employee_remarks':
           return buildColumn(name, 'Employee Remarks', minWidth: 250);
         default:
@@ -3613,7 +3887,7 @@ class TaskDataSource extends DataGridSource {
         if (columnName == 'id') return const SizedBox.shrink();
 
         if (columnName == 'status') {
-          if (isAssignedToCurrentUser) {
+          if (isAssignedToCurrentUser || isAdmin || isManager) {
             return Container(
               alignment: Alignment.centerLeft,
               padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -3659,8 +3933,27 @@ class TaskDataSource extends DataGridSource {
           }
         }
 
-        if (columnName == 'employee_remarks') {
-          return isAssignedToCurrentUser
+        if (columnName == 'employee_remarks' ||
+            columnName == 'notes' ||
+            columnName == 'action') {
+          return isAssignedToCurrentUser || isAdmin || isManager
+              ? buildEditableCell(columnName, isSpecialColumn: true)
+              : buildTextCell(cellValue?.toString());
+        }
+
+        if (columnName == 'work_date') {
+          return isAssignedToCurrentUser || isAdmin || isManager
+              ? buildEditableCell(
+                  columnName,
+                  isSpecialColumn: true,
+                ) // This should be a date picker
+              : buildTextCell(cellValue?.toString());
+        }
+
+        if (columnName == 'denial_reason' ||
+            columnName == 'responsible_party') {
+          // These should be dropdowns
+          return isAssignedToCurrentUser || isAdmin || isManager
               ? buildEditableCell(columnName, isSpecialColumn: true)
               : buildTextCell(cellValue?.toString());
         }
@@ -4178,7 +4471,12 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
     if (columnName == 'status' ||
         columnName == 'assignedTo' ||
-        columnName == 'employee_remarks') {
+        columnName == 'employee_remarks' ||
+        columnName == 'work_date' ||
+        columnName == 'notes' ||
+        columnName == 'denial_reason' ||
+        columnName == 'responsible_party' ||
+        columnName == 'action') {
       updatedFields[columnName] = newValue;
     } else {
       final originalTask = _taskDataSource.tasks.firstWhere(
@@ -4417,6 +4715,17 @@ class _TaskListScreenState extends State<TaskListScreen> {
                   },
                 );
               },
+            ),
+            tabletBody: SfDataGrid(
+              key: _dataGridKey,
+              source: _taskDataSource,
+              columns: _taskDataSource.getColumns(context),
+              columnWidthMode: ColumnWidthMode.auto,
+              allowEditing: true,
+              selectionMode: SelectionMode.none,
+              navigationMode: GridNavigationMode.cell,
+              gridLinesVisibility: GridLinesVisibility.both,
+              headerGridLinesVisibility: GridLinesVisibility.both,
             ),
             desktopBody: SfDataGrid(
               key: _dataGridKey,

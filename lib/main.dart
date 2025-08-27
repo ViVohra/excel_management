@@ -1,6 +1,7 @@
 // ignore_for_file: use_build_context_synchronously, library_private_types_in_public_api, avoid_print
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:collection/collection.dart';
@@ -28,7 +29,7 @@ final logger = Logger(
     lineLength: 120,
     colors: true,
     printEmojis: true,
-    printTime: true,
+    dateTimeFormat: DateTimeFormat.dateAndTime,
   ),
 );
 
@@ -39,17 +40,33 @@ class Breakpoints {
   static const double desktop = 1200;
 }
 
-// ======== THEME DEFINITION (CENTRALIZED) ========
+// ======== THEME DEFINITION (REFACTORED) ========
 class AppTheme {
-  static ThemeData build() {
-    const primaryColor = Color(0xFF00796B); // A slightly deeper teal
-    const secondaryColor = Color(0xFFFFA000); // A richer amber
-    const backgroundColor = Color(0xFFF5F7FA); // A softer off-white
-    const surfaceColor = Colors.white;
-    const textColor = Color(0xFF333333);
-    const borderColor = Color(0xFFE0E0E0);
+  static final ThemeData lightTheme = _buildTheme(Brightness.light);
+  static final ThemeData darkTheme = _buildTheme(Brightness.dark);
 
-    final baseTheme = ThemeData.light(useMaterial3: true);
+  static ThemeData _buildTheme(Brightness brightness) {
+    final bool isLight = brightness == Brightness.light;
+
+    // Define color palettes
+    final Color primaryColor = isLight
+        ? const Color(0xFF00796B)
+        : const Color(0xFF4DB6AC);
+    final Color secondaryColor = isLight
+        ? const Color(0xFFFFA000)
+        : const Color(0xFFFFC107);
+    final Color backgroundColor = isLight
+        ? const Color(0xFFF5F7FA)
+        : const Color(0xFF121212);
+    final Color surfaceColor = isLight ? Colors.white : const Color(0xFF1E1E1E);
+    final Color textColor = isLight
+        ? const Color(0xFF333333)
+        : const Color(0xFFE0E0E0);
+    final Color borderColor = isLight
+        ? const Color(0xFFE0E0E0)
+        : const Color(0xFF424242);
+
+    final baseTheme = ThemeData(brightness: brightness, useMaterial3: true);
     final textTheme = GoogleFonts.manropeTextTheme(
       baseTheme.textTheme,
     ).apply(bodyColor: textColor, displayColor: textColor);
@@ -57,16 +74,16 @@ class AppTheme {
     return baseTheme.copyWith(
       colorScheme: ColorScheme.fromSeed(
         seedColor: primaryColor,
-        brightness: Brightness.light,
+        brightness: brightness,
         primary: primaryColor,
         secondary: secondaryColor,
         background: backgroundColor,
         surface: surfaceColor,
-        onPrimary: Colors.white,
+        onPrimary: isLight ? Colors.white : Colors.black,
         onSecondary: Colors.black,
         onBackground: textColor,
         onSurface: textColor,
-        error: const Color(0xFFD32F2F),
+        error: isLight ? const Color(0xFFD32F2F) : const Color(0xFFCF6679),
       ),
       scaffoldBackgroundColor: backgroundColor,
       textTheme: textTheme.copyWith(
@@ -95,23 +112,23 @@ class AppTheme {
           fontSize: 16,
         ),
       ),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
+      appBarTheme: AppBarTheme(
+        backgroundColor: isLight ? primaryColor : surfaceColor,
+        foregroundColor: isLight ? Colors.white : textColor,
         elevation: 1,
         centerTitle: true,
         titleTextStyle: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.bold,
-          color: Colors.white,
+          color: isLight ? Colors.white : textColor,
         ),
       ),
       cardTheme: CardThemeData(
-        elevation: 0.5,
+        elevation: isLight ? 0.5 : 1.0,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12.0),
-          side: const BorderSide(color: borderColor, width: 1),
+          side: BorderSide(color: borderColor, width: 1),
         ),
         margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 0),
         color: surfaceColor,
@@ -119,11 +136,11 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.0),
-          borderSide: const BorderSide(color: borderColor),
+          borderSide: BorderSide(color: borderColor),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.0),
-          borderSide: const BorderSide(color: borderColor),
+          borderSide: BorderSide(color: borderColor),
         ),
         filled: true,
         fillColor: surfaceColor,
@@ -135,7 +152,7 @@ class AppTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: primaryColor,
-          foregroundColor: Colors.white,
+          foregroundColor: isLight ? Colors.white : Colors.black,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           textStyle: textTheme.labelLarge,
           shape: RoundedRectangleBorder(
@@ -144,7 +161,7 @@ class AppTheme {
           elevation: 1,
         ),
       ),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: secondaryColor,
         foregroundColor: Colors.black,
         elevation: 2,
@@ -163,7 +180,7 @@ class AppTheme {
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         selectedItemColor: primaryColor,
-        unselectedItemColor: Colors.grey[500],
+        unselectedItemColor: isLight ? Colors.grey[500] : Colors.grey[400],
         selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
         backgroundColor: surfaceColor,
         elevation: 2,
@@ -180,6 +197,19 @@ class AppTheme {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       ),
     );
+  }
+}
+
+class ThemeNotifier with ChangeNotifier {
+  ThemeMode _themeMode = ThemeMode.light;
+
+  ThemeMode get themeMode => _themeMode;
+
+  void toggleTheme() {
+    _themeMode = _themeMode == ThemeMode.light
+        ? ThemeMode.dark
+        : ThemeMode.light;
+    notifyListeners();
   }
 }
 
@@ -383,7 +413,7 @@ class TaskCommentModel {
   }
 }
 
-// ======== SERVICES ========
+// ======== SERVICES (REFACTORED) ========
 class AuthService with ChangeNotifier {
   final SupabaseClient _supabase = Supabase.instance.client;
 
@@ -413,6 +443,22 @@ class AuthService with ChangeNotifier {
     }
   }
 
+  // Private helper to reduce duplication
+  Future<void> _insertUser({
+    required String uid,
+    required String email,
+    required String name,
+    required String role,
+  }) async {
+    await _supabase.from('users').insert({
+      'uid': uid,
+      'email': email,
+      'role': role,
+      'name': name,
+      'isActive': true,
+    });
+  }
+
   Future<void> signUpAdmin({
     required String email,
     required String password,
@@ -425,15 +471,14 @@ class AuthService with ChangeNotifier {
         password: password,
       );
       if (authResponse.user == null) {
-        throw Exception('User creation failed in Auth.');
+        throw const AuthException('User creation failed in Supabase Auth.');
       }
-      await _supabase.from('users').insert({
-        'uid': authResponse.user!.id,
-        'email': email,
-        'role': 'admin',
-        'name': name,
-        'isActive': true,
-      });
+      await _insertUser(
+        uid: authResponse.user!.id,
+        email: email,
+        name: name,
+        role: 'admin',
+      );
       logger.i('Admin account created successfully for: $email');
       notifyListeners();
     } on AuthException catch (e, st) {
@@ -462,15 +507,14 @@ class AuthService with ChangeNotifier {
         password: password,
       );
       if (authResponse.user == null) {
-        throw Exception('$role creation failed in Auth.');
+        throw AuthException('$role creation failed in Supabase Auth.');
       }
-      await _supabase.from('users').insert({
-        'uid': authResponse.user!.id,
-        'email': email,
-        'role': role,
-        'name': name,
-        'isActive': true,
-      });
+      await _insertUser(
+        uid: authResponse.user!.id,
+        email: email,
+        name: name,
+        role: role,
+      );
       logger.i('$role account created successfully for: $email');
       notifyListeners();
       return password;
@@ -507,6 +551,13 @@ class AuthService with ChangeNotifier {
         error: e,
         stackTrace: st,
       );
+      // More robust error handling
+      if (e.message.toLowerCase().contains('invalid login credentials')) {
+        throw Exception('Invalid email or password.');
+      }
+      if (e.statusCode == '400') {
+        throw Exception('Please check your email and password.');
+      }
       throw Exception(e.message);
     } catch (e, st) {
       logger.e(
@@ -514,7 +565,8 @@ class AuthService with ChangeNotifier {
         error: e,
         stackTrace: st,
       );
-      if (e.toString().contains('Failed host lookup')) {
+      // Avoid fragile string matching
+      if (e is SocketException) {
         throw Exception('Please check your internet connection.');
       }
       rethrow;
@@ -556,7 +608,7 @@ class SupabaseService with ChangeNotifier {
       'get_uploads_for_user_in_project';
   static const _getProjectsForUserRpc = 'get_projects_for_user';
 
-  Future<Map<String, dynamic>> getAdminDashboardSummary(String adminId) async {
+  Future<Map<String, dynamic>?> getAdminDashboardSummary(String adminId) async {
     logger.d('Fetching admin dashboard summary for admin: $adminId');
     try {
       final response = await _supabase.rpc(
@@ -571,7 +623,7 @@ class SupabaseService with ChangeNotifier {
         error: e,
         stackTrace: st,
       );
-      return {};
+      return null; // Return null on error
     }
   }
 
@@ -1036,54 +1088,32 @@ class SupabaseService with ChangeNotifier {
     }
   }
 
-  Future<void> deleteProject(BuildContext context, String projectId) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm Deletion'),
-        content: const Text(
-          'Are you sure you want to delete this project and all its tasks? This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      logger.w('Attempting to PERMANENTLY DELETE project: $projectId');
-      try {
-        await _supabase.from('projects').delete().eq('id', projectId);
-        logger.i(
-          'Project (ID: $projectId) was successfully deleted from the database.',
-        );
-        notifyListeners();
-      } on PostgrestException catch (e, st) {
-        logger.e(
-          'A database error occurred while deleting project: $projectId',
-          error: e,
-          stackTrace: st,
-        );
-        throw Exception(
-          'A database error occurred while deleting the project. It may have already been removed.',
-        );
-      } catch (e, st) {
-        logger.e(
-          'An unexpected error occurred while deleting project: $projectId',
-          error: e,
-          stackTrace: st,
-        );
-        throw Exception(
-          'An unexpected error occurred. Please check your connection and try again.',
-        );
-      }
+  Future<void> deleteProject(String projectId) async {
+    logger.w('Attempting to PERMANENTLY DELETE project: $projectId');
+    try {
+      await _supabase.from('projects').delete().eq('id', projectId);
+      logger.i(
+        'Project (ID: $projectId) was successfully deleted from the database.',
+      );
+      notifyListeners();
+    } on PostgrestException catch (e, st) {
+      logger.e(
+        'A database error occurred while deleting project: $projectId',
+        error: e,
+        stackTrace: st,
+      );
+      throw Exception(
+        'A database error occurred while deleting the project. It may have already been removed.',
+      );
+    } catch (e, st) {
+      logger.e(
+        'An unexpected error occurred while deleting project: $projectId',
+        error: e,
+        stackTrace: st,
+      );
+      throw Exception(
+        'An unexpected error occurred. Please check your connection and try again.',
+      );
     }
   }
 }
@@ -1100,6 +1130,7 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ThemeNotifier()),
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => SupabaseService()),
         ChangeNotifierProxyProvider<AuthService, UserModelNotifier>(
@@ -1148,61 +1179,90 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Project Management App',
-      theme: AppTheme.build(),
-      home: const AuthWrapper(),
-      debugShowCheckedModeBanner: false,
+    return Consumer<ThemeNotifier>(
+      builder: (context, themeNotifier, child) {
+        return MaterialApp(
+          title: 'Project Management App',
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeNotifier.themeMode,
+          home: const AuthWrapper(),
+          debugShowCheckedModeBanner: false,
+        );
+      },
     );
   }
 }
 
-// ======== AUTH & NAVIGATION ========
-class AuthWrapper extends StatelessWidget {
+// ======== AUTH & NAVIGATION (REFACTORED) ========
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
   @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  @override
+  void initState() {
+    super.initState();
+    // Listen to user model changes to handle deactivation
+    Provider.of<UserModelNotifier>(
+      context,
+      listen: false,
+    ).addListener(_handleUserDeactivation);
+  }
+
+  @override
+  void dispose() {
+    Provider.of<UserModelNotifier>(
+      context,
+      listen: false,
+    ).removeListener(_handleUserDeactivation);
+    super.dispose();
+  }
+
+  void _handleUserDeactivation() {
+    final userModel = Provider.of<UserModelNotifier>(
+      context,
+      listen: false,
+    ).userModel;
+    if (userModel != null && !userModel.isActive) {
+      // Show snackbar and sign out
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Your account has been deactivated.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      Provider.of<AuthService>(context, listen: false).signOut();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Consumer<UserModelNotifier>(
-      builder: (context, userNotifier, child) {
-        final authService = context.watch<AuthService>();
+    final authService = context.watch<AuthService>();
+    final userNotifier = context.watch<UserModelNotifier>();
 
-        if (authService.currentUser == null) {
-          return const AuthScreen();
-        }
+    if (authService.currentUser == null) {
+      return const AuthScreen();
+    }
 
-        final userModel = userNotifier.userModel;
+    final userModel = userNotifier.userModel;
 
-        if (userModel == null) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
+    if (userModel == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
-        if (userModel.isActive == false) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Your account has been deactivated.'),
-              ),
-            );
-            Provider.of<AuthService>(context, listen: false).signOut();
-          });
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        switch (userModel.role) {
-          case 'admin':
-          case 'manager':
-            return const AdminHomePage();
-          case 'employee':
-          default:
-            return const EmployeeHomePage();
-        }
-      },
-    );
+    // The listener will handle deactivation, so we just need to route
+    switch (userModel.role) {
+      case 'admin':
+      case 'manager':
+        return const AdminHomePage();
+      case 'employee':
+      default:
+        return const EmployeeHomePage();
+    }
   }
 }
 
@@ -1277,7 +1337,11 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _resetPassword() async {
     final email = _emailController.text.trim();
-    if (email.isEmpty || !email.contains('@')) {
+    // Improved email validation
+    final emailRegex = RegExp(
+      r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+",
+    );
+    if (!emailRegex.hasMatch(email)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter a valid email to reset password.'),
@@ -1455,7 +1519,7 @@ class ResponsiveLayout extends StatelessWidget {
       builder: (context, constraints) {
         if (constraints.maxWidth >= Breakpoints.desktop) {
           return desktopBody;
-        } else if (constraints.maxWidth >= Breakpoints.mobile) {
+        } else if (constraints.maxWidth >= Breakpoints.tablet) {
           return tabletBody;
         } else {
           return mobileBody;
@@ -1527,7 +1591,7 @@ class InfoCard extends StatelessWidget {
   }
 }
 
-// ======== ADMIN SCREENS ========
+// ======== ADMIN SCREENS (REFACTORED) ========
 class AdminHomePage extends StatefulWidget {
   const AdminHomePage({super.key});
 
@@ -1538,143 +1602,169 @@ class AdminHomePage extends StatefulWidget {
 class _AdminHomePageState extends State<AdminHomePage> {
   int _selectedIndex = 0;
 
-  late final List<Widget> _widgetOptions;
-  late final List<String> _titles;
-
-  @override
-  void initState() {
-    super.initState();
-    final userModel = Provider.of<UserModelNotifier>(
-      context,
-      listen: false,
-    ).userModel;
-    _widgetOptions = <Widget>[
-      const AdminDashboardScreen(),
-      const ProjectListScreen(),
-      const EmployeeListScreen(),
-      const ReportingScreen(),
-    ];
-    _titles = [
-      'Welcome, ${userModel?.name ?? 'Admin'}',
-      'Manage Projects',
-      'Manage Employees',
-      'Reporting & Analytics',
-    ];
-  }
+  final List<Widget> _widgetOptions = const <Widget>[
+    AdminDashboardScreen(),
+    ProjectListScreen(),
+    EmployeeListScreen(),
+    ReportingScreen(),
+  ];
 
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
-    final width = MediaQuery.of(context).size.width;
+    final themeNotifier = Provider.of<ThemeNotifier>(context, listen: false);
 
-    if (width < Breakpoints.mobile) {
-      // Mobile Layout with BottomNavigationBar
-      return Scaffold(
-        appBar: AppBar(
-          title: Text(_titles[_selectedIndex]),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.logout),
-              tooltip: 'Logout',
-              onPressed: () => authService.signOut(),
+    // Use Consumer to reactively build the title
+    return Consumer<UserModelNotifier>(
+      builder: (context, userNotifier, child) {
+        final userModel = userNotifier.userModel;
+        final titles = [
+          'Welcome, ${userModel?.name ?? 'Admin'}',
+          'Manage Projects',
+          'Manage Employees',
+          'Reporting & Analytics',
+        ];
+
+        return ResponsiveLayout(
+          mobileBody: _buildMobileLayout(titles, authService, themeNotifier),
+          tabletBody: _buildDesktopLayout(titles, authService, themeNotifier),
+          // Using desktop for tablet
+          desktopBody: _buildDesktopLayout(titles, authService, themeNotifier),
+        );
+      },
+    );
+  }
+
+  Scaffold _buildMobileLayout(
+    List<String> titles,
+    AuthService authService,
+    ThemeNotifier themeNotifier,
+  ) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(titles[_selectedIndex]),
+        actions: [
+          IconButton(
+            icon: Icon(
+              themeNotifier.themeMode == ThemeMode.light
+                  ? Icons.dark_mode_outlined
+                  : Icons.light_mode_outlined,
             ),
-          ],
-        ),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: IndexedStack(
-              index: _selectedIndex,
-              children: _widgetOptions,
-            ),
+            tooltip: 'Toggle Theme',
+            onPressed: () => themeNotifier.toggleTheme(),
           ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
+            onPressed: () => authService.signOut(),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: IndexedStack(index: _selectedIndex, children: _widgetOptions),
         ),
-        bottomNavigationBar: BottomNavigationBar(
-          items: const <BottomNavigationBarItem>[
-            BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_outlined),
-              activeIcon: Icon(Icons.dashboard),
-              label: 'Dashboard',
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard_outlined),
+            activeIcon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.assignment_outlined),
+            activeIcon: Icon(Icons.assignment),
+            label: 'Projects',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people_alt_outlined),
+            activeIcon: Icon(Icons.people),
+            label: 'Employees',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bar_chart_outlined),
+            activeIcon: Icon(Icons.bar_chart),
+            label: 'Reporting',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        onTap: (index) => setState(() => _selectedIndex = index),
+      ),
+    );
+  }
+
+  Scaffold _buildDesktopLayout(
+    List<String> titles,
+    AuthService authService,
+    ThemeNotifier themeNotifier,
+  ) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(titles[_selectedIndex]),
+        actions: [
+          IconButton(
+            icon: Icon(
+              themeNotifier.themeMode == ThemeMode.light
+                  ? Icons.dark_mode_outlined
+                  : Icons.light_mode_outlined,
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.assignment_outlined),
-              activeIcon: Icon(Icons.assignment),
-              label: 'Projects',
+            tooltip: 'Toggle Theme',
+            onPressed: () => themeNotifier.toggleTheme(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
+            onPressed: () => authService.signOut(),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Row(
+          children: [
+            NavigationRail(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: (index) =>
+                  setState(() => _selectedIndex = index),
+              labelType: NavigationRailLabelType.all,
+              destinations: const <NavigationRailDestination>[
+                NavigationRailDestination(
+                  icon: Icon(Icons.dashboard_outlined),
+                  selectedIcon: Icon(Icons.dashboard),
+                  label: Text('Dashboard'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.assignment_outlined),
+                  selectedIcon: Icon(Icons.assignment),
+                  label: Text('Projects'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.people_alt_outlined),
+                  selectedIcon: Icon(Icons.people),
+                  label: Text('Employees'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(Icons.bar_chart_outlined),
+                  selectedIcon: Icon(Icons.bar_chart),
+                  label: Text('Reporting'),
+                ),
+              ],
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.people_alt_outlined),
-              activeIcon: Icon(Icons.people),
-              label: 'Employees',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart_outlined),
-              activeIcon: Icon(Icons.bar_chart),
-              label: 'Reporting',
-            ),
-          ],
-          currentIndex: _selectedIndex,
-          onTap: (index) => setState(() => _selectedIndex = index),
-        ),
-      );
-    } else {
-      // Desktop/Tablet Layout with NavigationRail
-      return Scaffold(
-        appBar: AppBar(
-          title: Text(_titles[_selectedIndex]),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.logout),
-              tooltip: 'Logout',
-              onPressed: () => authService.signOut(),
-            ),
-          ],
-        ),
-        body: SafeArea(
-          child: Row(
-            children: [
-              NavigationRail(
-                selectedIndex: _selectedIndex,
-                onDestinationSelected: (index) =>
-                    setState(() => _selectedIndex = index),
-                labelType: NavigationRailLabelType.all,
-                destinations: const <NavigationRailDestination>[
-                  NavigationRailDestination(
-                    icon: Icon(Icons.dashboard_outlined),
-                    selectedIcon: Icon(Icons.dashboard),
-                    label: Text('Dashboard'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.assignment_outlined),
-                    selectedIcon: Icon(Icons.assignment),
-                    label: Text('Projects'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.people_alt_outlined),
-                    selectedIcon: Icon(Icons.people),
-                    label: Text('Employees'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.bar_chart_outlined),
-                    selectedIcon: Icon(Icons.bar_chart),
-                    label: Text('Reporting'),
-                  ),
-                ],
-              ),
-              const VerticalDivider(thickness: 1, width: 1),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: IndexedStack(
-                    index: _selectedIndex,
-                    children: _widgetOptions,
-                  ),
+            const VerticalDivider(thickness: 1, width: 1),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                child: IndexedStack(
+                  index: _selectedIndex,
+                  children: _widgetOptions,
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      );
-    }
+      ),
+    );
   }
 }
 
@@ -1686,7 +1776,7 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
-  late Future<Map<String, dynamic>> _summaryFuture;
+  late Future<Map<String, dynamic>?> _summaryFuture;
 
   @override
   void initState() {
@@ -1694,7 +1784,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     _summaryFuture = _fetchSummary();
   }
 
-  Future<Map<String, dynamic>> _fetchSummary() {
+  Future<Map<String, dynamic>?> _fetchSummary() {
     final supabaseService = Provider.of<SupabaseService>(
       context,
       listen: false,
@@ -1706,7 +1796,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     if (userModel == null) {
       logger.w("AdminDashboard: User not available yet, cannot fetch summary.");
-      return Future.value({'error': 'User not available'});
+      // Throw an exception to be caught by FutureBuilder
+      throw Exception('User not available');
     }
     return supabaseService.getAdminDashboardSummary(userModel.uid);
   }
@@ -1720,13 +1811,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return FutureBuilder<Map<String, dynamic>>(
+    return FutureBuilder<Map<String, dynamic>?>(
       future: _summaryFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-        if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+        if (snapshot.hasError || snapshot.data == null) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1742,7 +1833,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   style: theme.textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
-                Text('${snapshot.error}', style: theme.textTheme.bodySmall),
+                Text(
+                  snapshot.error.toString(),
+                  style: theme.textTheme.bodySmall,
+                ),
                 const SizedBox(height: 20),
                 ElevatedButton.icon(
                   onPressed: refresh,
@@ -1832,23 +1926,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 const SizedBox(height: 16),
                 Card(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    padding: const EdgeInsets.all(16.0),
                     child: taskSummary.isNotEmpty
-                        ? Column(
-                            children: taskSummary.entries.map((entry) {
-                              return ListTile(
-                                title: Text(
-                                  entry.key,
-                                  style: theme.textTheme.bodyLarge,
-                                ),
-                                trailing: Text(
-                                  entry.value.toString(),
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                              );
-                            }).toList(),
+                        ? SizedBox(
+                            height: 250,
+                            child: _buildTaskPieChart(taskSummary, totalTasks),
                           )
                         : const Center(
                             child: Padding(
@@ -1863,6 +1945,47 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildTaskPieChart(Map<String, dynamic> taskSummary, int totalTasks) {
+    final List<PieChartSectionData> sections = [];
+    final colors = {
+      'Not Started': Colors.orange[400]!,
+      'In Progress': Colors.blue[400]!,
+      'Completed': Colors.green[400]!,
+      'On Hold': Colors.purple[400]!,
+      'Under Review': Colors.yellow[700]!,
+    };
+
+    taskSummary.forEach((status, count) {
+      if (count > 0) {
+        final color = colors[status] ?? Colors.grey[400]!;
+        sections.add(
+          PieChartSectionData(
+            color: color,
+            value: count.toDouble(),
+            title: '${(count / totalTasks * 100).toStringAsFixed(0)}%',
+            radius: 80.0,
+            titleStyle: const TextStyle(
+              fontSize: 14.0,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              shadows: [Shadow(color: Colors.black, blurRadius: 2)],
+            ),
+          ),
+        );
+      }
+    });
+
+    return PieChart(
+      PieChartData(
+        pieTouchData: PieTouchData(),
+        borderData: FlBorderData(show: false),
+        sectionsSpace: 2,
+        centerSpaceRadius: 40,
+        sections: sections,
+      ),
     );
   }
 }
@@ -1954,14 +2077,48 @@ class ProjectListScreen extends StatelessWidget {
 
   Widget _buildAdminMenu(BuildContext context, ProjectModel project) {
     return PopupMenuButton<String>(
-      onSelected: (value) {
+      onSelected: (value) async {
         if (value == 'edit') {
           _showEditProjectDialog(context, project);
         } else if (value == 'delete') {
-          Provider.of<SupabaseService>(
-            context,
-            listen: false,
-          ).deleteProject(context, project.id);
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Confirm Deletion'),
+              content: const Text(
+                'Are you sure you want to delete this project and all its tasks? This action cannot be undone.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text(
+                    'Delete',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+              ],
+            ),
+          );
+
+          if (confirmed == true) {
+            try {
+              await Provider.of<SupabaseService>(
+                context,
+                listen: false,
+              ).deleteProject(project.id);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Project deleted successfully.')),
+              );
+            } catch (e) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Error deleting project: $e')),
+              );
+            }
+          }
         }
       },
       itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
